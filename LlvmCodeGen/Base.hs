@@ -2,7 +2,15 @@
 -- Base LLVM Code Generation module
 --
 
-module LlvmCodeGen.Base where
+module LlvmCodeGen.Base (
+
+        LlvmCmmTop, LlvmUnresData, LlvmData, UnresLabel, UnresStatic, LlvmEnv,
+        getLlvmType, getFloatWidth, getBitWidth, llvmWord,
+        stringInCStyle, genLlvmStr,
+        mainCapability, strCLabel_llvm, genCmmLabelRef, genStringLabelRef,
+        llvmSDoc
+
+    ) where
 
 #include "HsVersions.h"
 

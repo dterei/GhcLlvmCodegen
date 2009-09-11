@@ -139,19 +139,13 @@ genStaticLit (CmmInt i w)
 genStaticLit (CmmFloat r w)
     = Right $ LMStaticLit (LMFloatLit r (getFloatWidth w))
 
-genStaticLit c@(CmmLabel _)
-    -- Leave unresolved, will fix later
-    = Left $ c
+-- Leave unresolved, will fix later
+genStaticLit c@(CmmLabel        _    ) = Left $ c
+genStaticLit c@(CmmLabelOff     _   _) = Left $ c
+genStaticLit c@(CmmLabelDiffOff _ _ _) = Left $ c
 
-genStaticLit c@(CmmLabelOff _ _)
-    = Left $ c
-
-genStaticLit c@(CmmLabelDiffOff _ _ _)
-    = Left $ c
-
-genStaticLit (CmmBlock b)
-    -- FIX: Check this actually works.
-    = Left $ CmmLabel $ infoTblLbl b
+-- FIX: Check this actually works
+genStaticLit (CmmBlock b) = Left $ CmmLabel $ infoTblLbl b
 
 genStaticLit (CmmHighStackMark)
     = panic "LlvmCodeGen.Data.genStaticLit - CmmHighStackMark unsupported!"

@@ -2,7 +2,9 @@
 -- Pretty print LLVM
 --
 
-module LlvmCodeGen.Ppr where
+module LlvmCodeGen.Ppr (
+        pprLlvmHeader, pprLlvmCmmTop, pprLlvmData
+    ) where
 
 #include "HsVersions.h"
 
