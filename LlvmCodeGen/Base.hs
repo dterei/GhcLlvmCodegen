@@ -5,7 +5,7 @@
 module LlvmCodeGen.Base (
 
         LlvmCmmTop, LlvmUnresData, LlvmData, UnresLabel, UnresStatic, LlvmEnv,
-        getLlvmType, getFloatWidth, getBitWidth, llvmWord,
+        getLlvmType, getFloatWidth, getBitWidth, llvmWord, llvmFunTy,
         stringInCStyle, genLlvmStr,
         mainCapability, strCLabel_llvm, genCmmLabelRef, genStringLabelRef,
         llvmSDoc
@@ -69,6 +69,10 @@ getBitWidth w = LMInt $ widthInBits w
 -- | Llvm word
 llvmWord :: LlvmType
 llvmWord = getBitWidth wordWidth
+
+-- | Llvm Function type for Cmm function
+llvmFunTy :: LlvmType
+llvmFunTy = LMFunction i32 []
 
 
 -- ----------------------------------------------------------------------------

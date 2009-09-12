@@ -31,6 +31,7 @@ data LlvmModule = LlvmModule  {
 data LlvmFunction = LlvmFunction {
         funcDecl    :: LlvmFunctionDecl,
         funcLinkage :: LlvmLinkageType,
+        funcAttrs   :: [LlvmFuncAttr],
         funcBody    :: LlvmBasicBlocks
   }
 

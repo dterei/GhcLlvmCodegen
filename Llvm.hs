@@ -27,6 +27,8 @@ module Llvm (
         pLift, pLower, isInt, isPointer,
 
         LlvmCallType(..), LlvmParameterListType(..), LlvmLinkageType(..),
+        LlvmFuncAttr(..),
+
         ppLlvmModule, ppLlvmComments, ppLlvmComment, ppLlvmConstants,
         ppLlvmConstant, ppLlvmGlobals, ppLlvmGlobal, ppLlvmFunctionDecls,
         ppLlvmFunctionDecl, ppLlvmFunctions, ppLlvmFunction,

@@ -44,22 +44,19 @@ llvmCodeGen dflags h us cmms
                  ++ " generation backend (-fasm)")
 
       let cmm = concat $ map extractRawCmm cmms
-      let cmmProc = concat $ map extractCmmProc cmm
 
       bufh <- newBufHandle h
 
       Prt.bufLeftRender bufh $ pprLlvmHeader
 
       cmmDataLlvmGens dflags bufh cmm
-      cmmProcLlvmGens dflags bufh us cmmProc 0
+      cmmProcLlvmGens dflags bufh us cmm 0
 
       bFlush bufh
 
       return  ()
 
   where extractRawCmm (Cmm tops) = tops
-        extractCmmProc cp@(CmmProc _ _ _ _) = [cp]
-        extractCmmProc _                    = []
 
 
 -- -----------------------------------------------------------------------------
@@ -70,11 +67,18 @@ cmmDataLlvmGens
       -> BufHandle
       -> [RawCmmTop]
       -> IO ()
-
 cmmDataLlvmGens dflags h cmm =
-    let exData cd@(CmmData s d) = [(s,d)]
-        exData _                = []
-    in cmmDataLlvmGens' dflags h Map.empty (concat $ map exData cmm) []
+    let exData (CmmData s d) = [(s,d)]
+        exData  _            = []
+
+        exProclbl (CmmProc _ l _ _) = [(strCLabel_llvm l)]
+        exProclbl  _                = []
+
+        cdata = concat $ map exData cmm
+        -- put the functions into the enviornment
+        cproc = concat $ map exProclbl cmm
+        env = foldl (\e l -> Map.insert l llvmFunTy e) Map.empty cproc
+    in cmmDataLlvmGens' dflags h env cdata []
       
 cmmDataLlvmGens'
       :: DynFlags
@@ -112,15 +116,11 @@ cmmProcLlvmGens
 cmmProcLlvmGens dflags h us [] count
     = return ()
 
-cmmProcLlvmGens dflags h us ((CmmData _ _) : cmms) count
-    = panic "Llvm.LlvmCodeGen.cmmProcLlvmGens - CmmData section found!"
-
 cmmProcLlvmGens dflags h us (cmm : cmms) count
   = do
-      (us', llvm) <- cmmLlvmGen dflags us cmm count
+      (us', llvm) <- cmmLlvmGen dflags h us cmm count
 
-      Prt.bufLeftRender h $
-          Prt.vcat $ map (\x -> Prt.empty Prt.$+$ (pprLlvmCmmTop dflags x) Prt.$+$ Prt.empty) llvm
+      Prt.bufLeftRender h $ Prt.vcat $ map (pprLlvmCmmTop dflags) llvm
 
       let count' = count + 1
 
@@ -131,13 +131,14 @@ cmmProcLlvmGens dflags h us (cmm : cmms) count
 --
 cmmLlvmGen
       :: DynFlags
+      -> BufHandle
       -> UniqSupply
       -> RawCmmTop                                    -- ^ the cmm to generate code for
       -> Int                                          -- ^ sequence number of this top thing
       -> IO ( UniqSupply
               , [LlvmCmmTop] )                          -- native code
 
-cmmLlvmGen dflags us cmm count
+cmmLlvmGen dflags h us cmm count
   = do
     -- rewrite assignments to global regs
     let (fixed_cmm, usFix) = initUs us $ fixAssignsTop cmm
@@ -161,14 +162,16 @@ cmmLlvmGen dflags us cmm count
 genLlvmCode 
     :: DynFlags 
     -> RawCmmTop 
-    -> UniqSM [LlvmCmmTop]
+    ->  UniqSM [LlvmCmmTop]
 
 genLlvmCode dflags (CmmData sec dat)
-    = return [CmmData sec dat]
-
-genLlvmCode dflags (CmmProc info lab params (ListGraph blocks))
     = return []
 
+genLlvmCode dflags (CmmProc [] lbl _ (ListGraph []))
+    = return []
+
+genLlvmCode dflags (CmmProc info lbl params (ListGraph blocks))
+    = return [(CmmProc info lbl params (ListGraph []))]
 
 -- -----------------------------------------------------------------------------
 -- Fixup assignments to global registers so that they assign to 

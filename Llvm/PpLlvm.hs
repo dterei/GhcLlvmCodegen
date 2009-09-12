@@ -70,12 +70,13 @@ ppLlvmFunctions :: LlvmFunctions -> Doc
 ppLlvmFunctions funcs = vcat $ map ppLlvmFunction funcs
 
 ppLlvmFunction :: LlvmFunction -> Doc
-ppLlvmFunction (LlvmFunction dec link body) =
+ppLlvmFunction (LlvmFunction dec link attrs body) =
   let linkTxt = show link
       linkDoc   | linkTxt == "" = empty
                 | otherwise     = space <> (text linkTxt)
+      attrDoc = hcat $ intersperse space (map (text . show) attrs)
   in (text "define") <> linkDoc <+> (ppLlvmFuncDecSig dec)
-        <+> (text "nounwind")
+        <+> attrDoc
         $+$ lbrace
         $+$ ppLlvmBasicBlocks body
         $+$ rbrace
@@ -153,7 +154,7 @@ ppFunctionSignature :: String -> LlvmType -> [LlvmVar] -> Doc
 ppFunctionSignature fnName returnType params =
   let ppParams = ppCommaJoin params
    in (text (show returnType)) <+> atsym <> (text fnName)
-        <> lparen <+> ppParams <+> rparen
+        <> lparen <> ppParams <> rparen
 
 
 ppVarargsFunctionSignature :: String -> LlvmType -> [LlvmVar] -> Doc
@@ -237,7 +238,7 @@ ppGetElementPtr ptr idx =
 ppReturn :: LlvmVar -> Doc
 ppReturn var
   | getVarType var == LMVoid  = (text "ret") <+> (text $ show (getVarType var))
-  | otherwise              = (text "ret") <+> (text $ show var)
+  | otherwise                 = (text "ret") <+> (text $ show var)
 
 
 ppBranch :: LlvmVar -> Doc
@@ -255,7 +256,7 @@ ppPhi tp preds =
   let ppPreds (val, label) = brackets $ (text $ getName val) <> comma
         <+> (text $ getName label)
   in (text "phi") <+> (text $ show tp)
-        <+> (hcat $ intersperse (text ",") (map ppPreds preds))
+        <+> (hcat $ intersperse comma (map ppPreds preds))
 
 
 ppSwitch :: LlvmVar -> LlvmVar -> [(LlvmVar,LlvmVar)] -> Doc
@@ -270,11 +271,11 @@ ppSwitch scrut dflt targets =
 -- Misc functions
 --------------------------------------------------------------------------------
 ppPrependList :: String -> [Doc] -> Doc
-ppPrependList str docs = vcat (map ((text str) <+>) docs)
+ppPrependList str docs = vcat $ map ((text str) <+>) docs
 
 atsym :: Doc
 atsym = text "@"
 
 ppCommaJoin :: (Show a) => [a] -> Doc
-ppCommaJoin strs = hcat $ intersperse (comma <> space)  $ map (text . show) strs
+ppCommaJoin strs = hcat $ intersperse comma (map (text . show) strs)
 
