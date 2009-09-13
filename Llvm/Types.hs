@@ -104,6 +104,7 @@ data LlvmLit
 
 instance Show LlvmLit where
   show (LMIntLit i t) = show t ++ " " ++ show i
+  -- FIX: Make sure NAN, INFINITY.. are OK in LLVM.
   show (LMFloatLit r t)
       = show t ++ " " ++ str
         where d = fromRational r :: Double
@@ -131,8 +132,10 @@ data LlvmStatic
   
   -- pointer to int
   | LMPtoI LlvmStatic LlvmType
-  -- add
+  -- constant add
   | LMAdd LlvmStatic LlvmStatic
+  -- constant sub
+  | LMSub LlvmStatic LlvmStatic
   deriving (Eq)
 
 instance Show LlvmStatic where
@@ -159,6 +162,12 @@ instance Show LlvmStatic where
         in if ty1 == getStatType s2
                 then show ty1 ++ " add (" ++ show s1 ++ "," ++ show s2 ++ ")"
                 else error $ "LMAdd with different types! s1: "
+                        ++ show s1 ++ ", s2: " ++ show s2
+  show (LMSub s1 s2)
+      = let ty1 = getStatType s1
+        in if ty1 == getStatType s2
+                then show ty1 ++ " sub (" ++ show s1 ++ "," ++ show s2 ++ ")"
+                else error $ "LMSub with different types! s1: "
                         ++ show s1 ++ ", s2: " ++ show s2
 
 

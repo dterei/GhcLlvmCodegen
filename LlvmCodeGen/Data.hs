@@ -104,7 +104,7 @@ resData env (Left (CmmLabelOff label off)) =
 resData env (Left (CmmLabelDiffOff l1 l2 off)) =
     let (var1, glob1) = resData env (Left (CmmLabel l1))
         (var2, glob2) = resData env (Left (CmmLabel l2))
-        var = LMAdd var1 var2
+        var = LMSub var1 var2
         offset = LMStaticLit $ LMIntLit (toInteger off) llvmWord
     in (LMAdd var offset, glob1 ++ glob2)
 
