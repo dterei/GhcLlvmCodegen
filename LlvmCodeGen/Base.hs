@@ -1,10 +1,13 @@
 -- ----------------------------------------------------------------------------
 -- Base LLVM Code Generation module
 --
+-- Contains functions useful through out the code generator.
+--
 
 module LlvmCodeGen.Base (
 
-        LlvmCmmTop, LlvmUnresData, LlvmData, UnresLabel, UnresStatic, LlvmEnv,
+        LlvmCmmTop, LlvmBlock, LlvmUnresData, LlvmData, UnresLabel, UnresStatic,
+        LlvmEnv,
         getLlvmType, getFloatWidth, getBitWidth, llvmWord, llvmFunTy,
         stringInCStyle, genLlvmStr,
         mainCapability, strCLabel_llvm, genCmmLabelRef, genStringLabelRef,
@@ -36,6 +39,7 @@ import Numeric
 --
 
 type LlvmCmmTop = GenCmmTop CmmStatic [CmmStatic] (ListGraph LlvmStatement)
+type LlvmBlock = GenBasicBlock LlvmStatement
 
 type LlvmUnresData = (String, LlvmType, [UnresStatic])
 type LlvmData = ([LMGlobal], LlvmType, LMGlobal)

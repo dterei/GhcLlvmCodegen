@@ -13,6 +13,7 @@ module LlvmCodeGen ( llvmCodeGen ) where
 
 import Llvm
 import LlvmCodeGen.Base
+import LlvmCodeGen.CodeGen
 import LlvmCodeGen.Data
 import LlvmCodeGen.Ppr
 import LlvmCodeGen.Regs
@@ -162,16 +163,18 @@ cmmLlvmGen dflags h us cmm count
 genLlvmCode 
     :: DynFlags 
     -> RawCmmTop 
-    ->  UniqSM [LlvmCmmTop]
+    -> UniqSM [LlvmCmmTop]
 
-genLlvmCode dflags (CmmData sec dat)
+genLlvmCode dflags (CmmData _ _)
     = return []
 
-genLlvmCode dflags (CmmProc [] lbl _ (ListGraph []))
+genLlvmCode dflags (CmmProc _ _ _ (ListGraph []))
     = return []
 
-genLlvmCode dflags (CmmProc info lbl params (ListGraph blocks))
-    = return [(CmmProc info lbl params (ListGraph []))]
+genLlvmCode dflags cp@(CmmProc _ _ _ _)
+    = do
+        procs <- genLlvmProc cp
+        return procs
 
 -- -----------------------------------------------------------------------------
 -- Fixup assignments to global registers so that they assign to 

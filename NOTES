@@ -1,0 +1,23 @@
+Possible Problems
+~~~~~~~~~~~~~~~~~
+
+ - See GHC trac ticket #1852. Floats are padded to word size (4 extra bytes
+ on a 64 bit machine) by putting an appropriate CmmLit before them. On fasm
+ this is nessecary and forces the NCG to produce correct code. On viaC, this
+ isn't nessecary so it strips this padding out. What approach does llvm need?
+
+ - When converting Rational's to floats and doubles, we use special tags for
+ unrepresentable numbers, such as NAN, INFINITY... ect. Not sure if this is
+ actual valid in LLVM.
+
+ - Check that the approach taken for CmmBlock and CmmLabelDiff off in CmmData
+ sections is correct.
+ 
+ - Should I be converting CmmString's like I am into ASCII form when I can and
+ hex otherwise? If the string is pure 16bit unicode will this be fine? Maybe
+ I should be making them an array of 8 bit numbers?
+
+ - Check the Integer to Int conversion is OK.
+
+ - Fix warnings.
+
