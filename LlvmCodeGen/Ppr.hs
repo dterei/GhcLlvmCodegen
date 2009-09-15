@@ -33,23 +33,20 @@ pprLlvmHeader = ppLlvmGlobal mainCapability
 
 -- | Pretty print LLVM code
 pprLlvmCmmTop :: DynFlags -> LlvmCmmTop -> Doc
-pprLlvmCmmTop dflags cmm@(CmmData sec stat)
-  = let unres = genLlvmData dflags (sec,stat)
-        ldata = resolveLlvmData dflags Map.empty unres
-    in pprLlvmData dflags ldata
+pprLlvmCmmTop dflags (CmmData _ lmdata)
+  = vcat $ map (pprLlvmData dflags) lmdata
 
 pprLlvmCmmTop dflags p@(CmmProc info lbl params (ListGraph stmts))
   = (
         let static   = CmmDataLabel (entryLblToInfoLbl lbl) : info
-            infoData = CmmData Data static
         in if not (null info)
-            then pprLlvmCmmTop dflags infoData
+            then pprCmmStatic dflags static
             else empty
     ) $+$ (
         let funDec = LlvmFunctionDecl (strCLabel_llvm lbl) i32 FixedArgs []
             link = if (externallyVisibleCLabel lbl)
                         then ExternallyVisible else Internal
-            blocks = [LlvmBasicBlock "entry" [Return (LMLitVar $ LMIntLit 0 llvmWord)]]
+            blocks = [LlvmBlock "entry" [Return (LMLitVar $ LMIntLit 0 llvmWord)]]
             fun = LlvmFunction funDec link [NoUnwind] blocks
         in ppLlvmFunction fun
     )
@@ -60,9 +57,15 @@ pprLlvmCmmTop _ _
 
 -- | Pretty print LLVM data code
 pprLlvmData :: DynFlags -> LlvmData -> Doc
-pprLlvmData _ (globals, alias, struct) =
+pprLlvmData _ (globals, alias ) =
     let globals' = ppLlvmGlobals globals
-        alias'   = ppLlvmTypeAlias alias
-        struct'  = ppLlvmGlobal struct
-    in globals' $+$ alias' $+$ struct'
+        alias'   = ppLlvmTypeAliases alias
+    in alias' $+$ globals'
+
+-- | Pretty print CmmStatic
+pprCmmStatic :: DynFlags -> [CmmStatic] -> Doc
+pprCmmStatic dflags stat
+  = let unres = genLlvmData dflags (Data,stat)
+        (env', ldata) = resolveLlvmData dflags Map.empty unres
+    in pprLlvmData dflags ldata
 

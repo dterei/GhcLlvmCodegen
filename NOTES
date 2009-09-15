@@ -18,6 +18,23 @@ Possible Problems
  I should be making them an array of 8 bit numbers?
 
  - Check the Integer to Int conversion is OK.
+ 
+ - Do I need to handle the GcPtr CmmType differently from just a bit type?
+ 
+ - Should I be using FiniteMap instead of Data.Map?
+
+
+Todo
+~~~~
 
  - Fix warnings.
+
+ - Improve Type saftey of LLVM module (e.g split out pointers to own data type,
+ to limit where they can be used).
+
+ - Use OrdList instead of [].
+
+ - Use a new Monad instead of passing LlvmEnv around everywhere.
+
+ - Llvm module fixed 32bit. Change to work with all word widths.
 

@@ -2,11 +2,20 @@ module Llvm.AbsSyn where
 
 import Llvm.Types
 
-type BlockId = String
+-- | Block labels
+type LlvmBlockId = String
 
-data LlvmBasicBlock = LlvmBasicBlock BlockId [LlvmStatement]
+-- | Blocks consist of
+--     * label: The code label for this block
+--     * stmts: A list of LlvmStatement's representing the code for this block.
+--              This list must end with a control flow. A return, tail call or
+--              branch to another LlvmBlock within the current function scope.
+data LlvmBlock = LlvmBlock {
+        blockLabel :: LlvmBlockId,
+        blockStmts :: [LlvmStatement]
+  }
 
-type LlvmBasicBlocks = [LlvmBasicBlock]
+type LlvmBlocks = [LlvmBlock]
 
 -- | Modules consist of 
 --    * comments:  Just plain comments added to the Llvm IR.
@@ -32,7 +41,7 @@ data LlvmFunction = LlvmFunction {
         funcDecl    :: LlvmFunctionDecl,
         funcLinkage :: LlvmLinkageType,
         funcAttrs   :: [LlvmFuncAttr],
-        funcBody    :: LlvmBasicBlocks
+        funcBody    :: LlvmBlocks
   }
 
 type LlvmFunctions  = [LlvmFunction]

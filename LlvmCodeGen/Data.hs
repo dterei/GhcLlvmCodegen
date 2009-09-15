@@ -3,7 +3,7 @@
 --
 
 module LlvmCodeGen.Data (
-        genLlvmData, resolveLlvmData
+        genLlvmData, resolveLlvmDatas, resolveLlvmData
     ) where
 
 #include "HsVersions.h"
@@ -14,7 +14,7 @@ import LlvmCodeGen.Base
 import BlockId
 import CLabel
 import Cmm
-import CmmExpr
+
 import DynFlags
 import Outputable ( panic, showSDocOneLine )
 import qualified Outputable
@@ -54,29 +54,47 @@ genLlvmData _ ( _ , (CmmDataLabel lbl):xs) =
 
 genLlvmData _ _ = panic "Bad CmmData section doesn't start with CLabel!"
 
+resolveLlvmDatas :: DynFlags -> LlvmEnv -> [LlvmUnresData] -> [LlvmData] -> (LlvmEnv, [LlvmData])
+resolveLlvmDatas _ env [] ldata
+  = (env, ldata)
+
+resolveLlvmDatas dflags env (udata : rest) ldata
+  = let (env', ndata) = resolveLlvmData dflags env udata
+    in resolveLlvmDatas dflags env' rest (ldata ++ [ndata])
 
 -- | Fix up CLabel references now that we should have passed all CmmData.
-resolveLlvmData :: DynFlags -> LlvmEnv -> LlvmUnresData -> LlvmData
+resolveLlvmData :: DynFlags -> LlvmEnv -> LlvmUnresData -> (LlvmEnv, LlvmData)
 resolveLlvmData _ env (label, alias, unres) =
-    let (static, refs) = unzip $ map (resData env) unres
-        refs'          = catMaybes (concat refs)
+    let (env', static, refs) = resDatas env unres ([], [])
+        refs'          = catMaybes refs
         struct         = Just $ LMStaticStruc static alias
         glob           = LMGlobalVar label alias ExternallyVisible
-    in (refs', alias, (glob, struct))
+    in (env', (refs' ++ [(glob, struct)], [alias]))
 
 
 -- ----------------------------------------------------------------------------
--- Conversion functions
+-- Resolve Data/CLabel references
 --
- 
+
+-- | Resolve data list
+resDatas :: LlvmEnv -> [UnresStatic] -> ([LlvmStatic], [Maybe LMGlobal])
+         -> (LlvmEnv, [LlvmStatic], [Maybe LMGlobal])
+
+resDatas env [] (stat, glob)
+  = (env, stat, glob)
+
+resDatas env (cmm : rest) (stats, globs)
+  = let (env', nstat, nglob) = resData env cmm
+    in resDatas env' rest (stats ++ [nstat], globs ++ nglob)
+
 -- | Resolve an individual static label if it needs to be.
 --   We check the 'LlvmEnv' to see if the reference has been defined in this
 --   module. If it has we can retrieve its type and make a pointer, otherwise
 --   we introduce a generic external defenition for the referenced label and
 --   then make a pointer.
-resData :: LlvmEnv -> UnresStatic -> (LlvmStatic, [Maybe LMGlobal])
+resData :: LlvmEnv -> UnresStatic -> (LlvmEnv, LlvmStatic, [Maybe LMGlobal])
 
-resData env (Right stat) = (stat, [Nothing])
+resData env (Right stat) = (env, stat, [Nothing])
 
 resData env (Left cmm@(CmmLabel l)) =
     let label = strCLabel_llvm l
@@ -86,35 +104,40 @@ resData env (Left cmm@(CmmLabel l)) =
             -- Make generic external label defenition and then pointer to it
             Nothing -> 
                 let glob@(var, _) = genStringLabelRef label
+                    env' =  Map.insert label (pLower $ getVarType var) env
                     ptr  = LMStaticPointer var
-                in  (LMPtoI ptr lmty, [Just glob])
+                in  (env', LMPtoI ptr lmty, [Just glob])
             -- Referenced data exists in this module, retrieve type and make
             -- pointer to it.
             Just ty' ->
                 let var = LMGlobalVar label (LMPointer ty') ExternallyVisible
                     ptr  = LMStaticPointer var
-                in (LMPtoI ptr lmty, [Nothing])
+                in (env, LMPtoI ptr lmty, [Nothing])
 
 resData env (Left (CmmLabelOff label off)) =
-    let (var, glob) = resData env (Left (CmmLabel label))
+    let (env', var, glob) = resData env (Left (CmmLabel label))
         offset = LMStaticLit $ LMIntLit (toInteger off) llvmWord
-    in (LMAdd var offset, glob)
+    in (env', LMAdd var offset, glob)
 
 -- FIX: Check this actually works
 resData env (Left (CmmLabelDiffOff l1 l2 off)) =
-    let (var1, glob1) = resData env (Left (CmmLabel l1))
-        (var2, glob2) = resData env (Left (CmmLabel l2))
+    let (env1, var1, glob1) = resData env (Left (CmmLabel l1))
+        (env2, var2, glob2) = resData env1 (Left (CmmLabel l2))
         var = LMSub var1 var2
         offset = LMStaticLit $ LMIntLit (toInteger off) llvmWord
-    in (LMAdd var offset, glob1 ++ glob2)
+    in (env2, LMAdd var offset, glob1 ++ glob2)
 
+
+-- ----------------------------------------------------------------------------
+-- Generate static data
+--
 
 -- | Handle static data
 --   Don't handle CmmAlign or a CmmDataLabel.
 genData :: CmmStatic -> UnresStatic
 
 genData (CmmString str)
-    = Right $ LMString (stringInCStyle str) (LMArray (1 + length str) i8)
+    = Right $ LMString (genLlvmStr str) (LMArray (1 + length str) i8)
 
 genData (CmmUninitialised bytes)
     = Right $ LMUninitType (LMArray bytes i8)

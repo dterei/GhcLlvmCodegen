@@ -6,10 +6,12 @@
 
 module LlvmCodeGen.Base (
 
-        LlvmCmmTop, LlvmBlock, LlvmUnresData, LlvmData, UnresLabel, UnresStatic,
-        LlvmEnv,
+        LlvmCmmTop, LlvmBasicBlock, LlvmUnresData, LlvmData, UnresLabel,
+        UnresStatic, LlvmEnv,
+
         getLlvmType, getFloatWidth, getBitWidth, llvmWord, llvmFunTy,
-        stringInCStyle, genLlvmStr,
+        llvmPtrBits, genLlvmStr,
+
         mainCapability, strCLabel_llvm, genCmmLabelRef, genStringLabelRef,
         llvmSDoc
 
@@ -38,11 +40,13 @@ import Numeric
 -- Some data types
 --
 
-type LlvmCmmTop = GenCmmTop CmmStatic [CmmStatic] (ListGraph LlvmStatement)
-type LlvmBlock = GenBasicBlock LlvmStatement
+type LlvmCmmTop = GenCmmTop LlvmData [CmmStatic] (ListGraph LlvmStatement)
+type LlvmBasicBlock = GenBasicBlock LlvmStatement
 
 type LlvmUnresData = (String, LlvmType, [UnresStatic])
-type LlvmData = ([LMGlobal], LlvmType, LMGlobal)
+
+-- (data, type aliases)
+type LlvmData = ([LMGlobal], [LlvmType])
 
 type UnresLabel = CmmLit
 type UnresStatic = Either UnresLabel LlvmStatic
@@ -78,17 +82,21 @@ llvmWord = getBitWidth wordWidth
 llvmFunTy :: LlvmType
 llvmFunTy = LMFunction i32 []
 
+-- | Pointer width
+llvmPtrBits :: Int
+llvmPtrBits = widthInBits $ typeWidth gcWord
+
 
 -- ----------------------------------------------------------------------------
 -- String handling
 --
 
 -- | Print strings as valid C strings
-stringInCStyle :: [Word8] -> String
-stringInCStyle s = concatMap genLlvmStr s
+genLlvmStr :: [Word8] -> String
+genLlvmStr s = concatMap genLlvmStr' s
 
-genLlvmStr :: Word8 -> String
-genLlvmStr w =
+genLlvmStr' :: Word8 -> String
+genLlvmStr' w =
     let conv c | isLlvmOk c = [c]
                           | otherwise  = hex w
                 
@@ -96,10 +104,10 @@ genLlvmStr w =
 
         hex w' = let s = showHex w' ""
                  in case s of
-                     []       -> panic "Llvm.Base.genLlvmStr - returned nothing"
+                     []       -> panic "Llvm.Base.genLlvmStr' - returned nothing"
                      (x:[])   -> ['\\','0',(toUpper x)]
                      (x:y:[]) -> ['\\',(toUpper x),(toUpper y)]
-                     _        -> panic "Llvm.Base.genLlvmStr - returned too much"
+                     _        -> panic "Llvm.Base.genLlvmStr' - returned too much"
 
     in conv (chr $ fromIntegral w) 
 

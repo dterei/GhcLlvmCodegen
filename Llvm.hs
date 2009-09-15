@@ -16,7 +16,7 @@ module Llvm (
         LlvmFunctions, LlvmFunctionDecls,
         LlvmStatement(..), LlvmExpression(..),
         LlvmStatements,
-        LlvmBasicBlocks, LlvmBasicBlock(..), BlockId,
+        LlvmBlocks, LlvmBlock(..), LlvmBlockId,
 
         LlvmCmpOp(..), LlvmMachOp(..),
         LlvmVar(..), LlvmStatic(..), LlvmLit(..), LlvmType(..),
@@ -24,7 +24,8 @@ module Llvm (
         LMGlobal, LMString, LMConstant,
         i64, i32, i16, i8, i1,
         isGlobal, getLitType, getName, getPlainName, getVarType, getStatType,
-        pLift, pLower, isInt, isPointer,
+        getGlobalType, pLift, pLower, isInt, isFloat, isPointer,
+        llvmWidthInBits,
 
         LlvmCallType(..), LlvmParameterListType(..), LlvmLinkageType(..),
         LlvmFuncAttr(..),

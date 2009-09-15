@@ -261,6 +261,10 @@ getStatType (LMStaticStruc _ t) = t
 getStatType (LMStaticPointer v) = getVarType v
 getStatType (LMPtoI        _ t) = t
 
+-- | Return the 'LlvmType' of the 'LMGlobal'
+getGlobalType :: LMGlobal -> LlvmType
+getGlobalType (v, _) = getVarType v
+
 -- | Shortcut for 64 bit integer 
 i64 :: LlvmType
 i64 = LMInt 64
@@ -311,6 +315,22 @@ isFloat _          = False
 isPointer :: LlvmType -> Bool
 isPointer (LMPointer _) = True
 isPointer _             = False
+
+-- | Width in bits of an LlvmType, returns 0 if not applicable
+llvmWidthInBits :: LlvmType -> Int
+llvmWidthInBits (LMInt n)        = n
+llvmWidthInBits (LMFloat)        = 32
+llvmWidthInBits (LMDouble)       = 64
+llvmWidthInBits (LMFloat80)      = 80
+llvmWidthInBits (LMFloat128)     = 128
+-- Really should return the pointer width, but can't do that without support
+llvmWidthInBits (LMPointer t)    = llvmWidthInBits t
+llvmWidthInBits (LMArray _ t)    = llvmWidthInBits t
+llvmWidthInBits LMLabel          = 0
+llvmWidthInBits LMVoid           = 0
+llvmWidthInBits (LMStruct tys)   = sum $ map llvmWidthInBits tys
+llvmWidthInBits (LMFunction _ _) = 0
+llvmWidthInBits (LMAlias _ t)    = llvmWidthInBits t
 
 -- | Different types to call a function.
 data LlvmCallType

@@ -50,8 +50,8 @@ llvmCodeGen dflags h us cmms
 
       Prt.bufLeftRender bufh $ pprLlvmHeader
 
-      cmmDataLlvmGens dflags bufh cmm
-      cmmProcLlvmGens dflags bufh us cmm 0
+      env <- cmmDataLlvmGens dflags bufh cmm
+      cmmProcLlvmGens dflags bufh us env cmm 0
 
       bFlush bufh
 
@@ -67,7 +67,11 @@ cmmDataLlvmGens
       :: DynFlags
       -> BufHandle
       -> [RawCmmTop]
-      -> IO ()
+      -> IO ( LlvmEnv )
+
+cmmDataLlvmGens dflags h []
+  = return ( Map.empty )
+
 cmmDataLlvmGens dflags h cmm =
     let exData (CmmData s d) = [(s,d)]
         exData  _            = []
@@ -87,14 +91,14 @@ cmmDataLlvmGens'
       -> LlvmEnv
       -> [(Section, [CmmStatic])]
       -> [LlvmUnresData]
-      -> IO ()
+      -> IO ( LlvmEnv )
 
 cmmDataLlvmGens' dflags h env [] lmdata
     = do
-        let lmdata' = map (resolveLlvmData dflags env) lmdata
+        let (env, lmdata') = resolveLlvmDatas dflags env lmdata []
         let lmdoc = Prt.vcat $ map (pprLlvmData dflags) lmdata'
         Prt.bufLeftRender h lmdoc
-        return ()
+        return env
 
 cmmDataLlvmGens' dflags h env (cmm:cmms) lmdata
     = do
@@ -110,22 +114,23 @@ cmmProcLlvmGens
       :: DynFlags
       -> BufHandle
       -> UniqSupply
+      -> LlvmEnv
       -> [RawCmmTop]
       -> Int
       -> IO ()
 
-cmmProcLlvmGens dflags h us [] count
+cmmProcLlvmGens dflags h us env [] count
     = return ()
 
-cmmProcLlvmGens dflags h us (cmm : cmms) count
+cmmProcLlvmGens dflags h us env (cmm : cmms) count
   = do
-      (us', llvm) <- cmmLlvmGen dflags h us cmm count
+      (us', env', llvm) <- cmmLlvmGen dflags h us env cmm count
 
       Prt.bufLeftRender h $ Prt.vcat $ map (pprLlvmCmmTop dflags) llvm
 
       let count' = count + 1
 
-      cmmProcLlvmGens dflags h us' cmms count'
+      cmmProcLlvmGens dflags h us' env' cmms count'
 
 
 -- | Complete llvm code generation phase for a single top-level chunk of Cmm.
@@ -134,12 +139,14 @@ cmmLlvmGen
       :: DynFlags
       -> BufHandle
       -> UniqSupply
+      -> LlvmEnv
       -> RawCmmTop                                    -- ^ the cmm to generate code for
       -> Int                                          -- ^ sequence number of this top thing
-      -> IO ( UniqSupply
-              , [LlvmCmmTop] )                          -- native code
+      -> IO ( UniqSupply,
+              LlvmEnv,
+              [LlvmCmmTop] )                          -- native code
 
-cmmLlvmGen dflags h us cmm count
+cmmLlvmGen dflags h us env cmm count
   = do
     -- rewrite assignments to global regs
     let (fixed_cmm, usFix) = initUs us $ fixAssignsTop cmm
@@ -151,9 +158,9 @@ cmmLlvmGen dflags h us cmm count
         (pprCmm $ Cmm [opt_cmm])
 
     -- generate native code from cmm
-    let (llvmBC, usGen) = initUs usFix $ genLlvmCode dflags opt_cmm
+    let ((env', llvmBC), usGen) = initUs usFix $ genLlvmCode dflags env opt_cmm
 
-    return (usGen, llvmBC)
+    return (usGen, env', llvmBC)
 
 
 -- -----------------------------------------------------------------------------
@@ -162,19 +169,18 @@ cmmLlvmGen dflags h us cmm count
 
 genLlvmCode 
     :: DynFlags 
+    -> LlvmEnv
     -> RawCmmTop 
-    -> UniqSM [LlvmCmmTop]
+    -> UniqSM (LlvmEnv, [LlvmCmmTop])
 
-genLlvmCode dflags (CmmData _ _)
-    = return []
+genLlvmCode dflags env (CmmData _ _)
+    = return (env, [])
 
-genLlvmCode dflags (CmmProc _ _ _ (ListGraph []))
-    = return []
+genLlvmCode dflags env (CmmProc _ _ _ (ListGraph []))
+    = return (env, [])
 
-genLlvmCode dflags cp@(CmmProc _ _ _ _)
-    = do
-        procs <- genLlvmProc cp
-        return procs
+genLlvmCode dflags env cp@(CmmProc _ _ _ _)
+    = genLlvmProc env cp
 
 -- -----------------------------------------------------------------------------
 -- Fixup assignments to global registers so that they assign to 

@@ -15,7 +15,8 @@ module Llvm.PpLlvm (
     ppLlvmFunctionDecl,
     ppLlvmFunctions,
     ppLlvmFunction,
-    ppLlvmTypeAlias 
+    ppLlvmTypeAlias,
+    ppLlvmTypeAliases
 
     ) where
 
@@ -78,7 +79,7 @@ ppLlvmFunction (LlvmFunction dec link attrs body) =
   in (text "define") <> linkDoc <+> (ppLlvmFuncDecSig dec)
         <+> attrDoc
         $+$ lbrace
-        $+$ ppLlvmBasicBlocks body
+        $+$ ppLlvmBlocks body
         $+$ rbrace
 
 
@@ -103,14 +104,17 @@ ppLlvmFuncDecCall (LlvmFunctionDecl name retType argtype params) values
         FixedArgs -> ppFunctionSignature name retType values
 
 
-ppLlvmBasicBlocks :: LlvmBasicBlocks -> Doc
-ppLlvmBasicBlocks blocks = vcat $ map ppLlvmBasicBlock blocks
+ppLlvmBlocks :: LlvmBlocks -> Doc
+ppLlvmBlocks blocks = vcat $ map ppLlvmBlock blocks
 
-ppLlvmBasicBlock :: LlvmBasicBlock -> Doc
-ppLlvmBasicBlock (LlvmBasicBlock blockId stmts)
+ppLlvmBlock :: LlvmBlock -> Doc
+ppLlvmBlock (LlvmBlock blockId stmts)
   = ppLlvmStatement (MkLabel blockId)
         $+$ nest 4 (vcat $ map  ppLlvmStatement stmts)
 
+
+ppLlvmTypeAliases :: [LlvmType] -> Doc
+ppLlvmTypeAliases tys = vcat $ map ppLlvmTypeAlias tys
 
 ppLlvmTypeAlias :: LlvmType -> Doc
 ppLlvmTypeAlias al@(LMAlias _ t)
