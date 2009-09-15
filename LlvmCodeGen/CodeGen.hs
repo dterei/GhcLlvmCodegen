@@ -149,7 +149,7 @@ exprToVar env e =
             -> return $ genCmmReg env r
         
         CmmMachOp op exprs
-            -> genCmmMachop op exprs
+            -> genMachOp env op exprs
 
         CmmStackSlot _ _ 
             -> panic "LlvmCodeGen.CodeGen.exprToVar: CmmStackSlot not supported!"
