@@ -18,7 +18,7 @@ module Llvm (
         LlvmStatements,
         LlvmBlocks, LlvmBlock(..), LlvmBlockId,
 
-        LlvmCmpOp(..), LlvmMachOp(..),
+        LlvmCmpOp(..), LlvmMachOp(..), LlvmCastOp(..),
         LlvmVar(..), LlvmStatic(..), LlvmLit(..), LlvmType(..),
 
         LMGlobal, LMString, LMConstant,

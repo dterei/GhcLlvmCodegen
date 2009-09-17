@@ -1,4 +1,7 @@
+-- | The various LLVM Types.
+--
 module Llvm.Types where
+
 
 -- | Llvm compare functions, parameter of the 'Expression_Compare' constructor 
 --   of type 'Expression'
@@ -13,6 +16,12 @@ data LlvmCmpOp
   | LM_CMP_Sge -- Signed greater then or equal
   | LM_CMP_Slt -- Signed less then
   | LM_CMP_Sle -- Signed less then or equal
+  | LM_CMP_Feq -- Float equality
+  | LM_CMP_Fne -- Float non equality
+  | LM_CMP_Fgt -- Float greater then
+  | LM_CMP_Fge -- Float greater then or equal
+  | LM_CMP_Flt -- Float less then
+  | LM_CMP_Fle -- Float less then or equal
   deriving (Eq)
 
 instance Show LlvmCmpOp where
@@ -26,29 +35,39 @@ instance Show LlvmCmpOp where
   show LM_CMP_Sge = "sge"
   show LM_CMP_Slt = "slt"
   show LM_CMP_Sle = "sle"
+  show LM_CMP_Feq = "oeq"
+  show LM_CMP_Fne = "one"
+  show LM_CMP_Fgt = "ogt"
+  show LM_CMP_Fge = "oge"
+  show LM_CMP_Flt = "olt"
+  show LM_CMP_Fle = "ole"
+
 
 -- | Llvm binary operators, parameter of the 'Expression_MachOp' constructor of type
 --   'Expression'
 data LlvmMachOp
   -- Following take two integer, floating point or vector values.
   = LM_MO_Add
+  | LM_MO_FAdd
   | LM_MO_Sub
+  | LM_MO_FSub
   | LM_MO_Mul
-  | LM_MO_U_Div -- unsigned integer or vector division.
-  | LM_MO_S_Div -- signed integer ..
-  | LM_MO_F_Div -- floating point ..
-  | LM_MO_U_Rem -- unsigned integer or vector remainder (mod)
-  | LM_MO_S_Rem -- signed ...
-  | LM_MO_F_Rem -- floating point ...
+  | LM_MO_FMul
+  | LM_MO_UDiv -- unsigned integer or vector division.
+  | LM_MO_SDiv -- signed integer ..
+  | LM_MO_FDiv -- floating point ..
+  | LM_MO_URem -- unsigned integer or vector remainder (mod)
+  | LM_MO_SRem -- signed ...
+  | LM_MO_FRem -- floating point ...
   -- Left shift
   | LM_MO_Shl
   -- Logical shift right
   -- Shift right, filling with zero
-  | LM_MO_L_Shr
+  | LM_MO_LShr
   -- Arithmetic shift right
   -- The most significant bits of the result will be equal to the sign bit of
   -- the left operand.
-  | LM_MO_A_Shr
+  | LM_MO_AShr
   -- Bitwise logical operations.
   | LM_MO_And
   | LM_MO_Or
@@ -57,20 +76,55 @@ data LlvmMachOp
 
 instance Show LlvmMachOp where
   show LM_MO_Add  = "add"
+  show LM_MO_FAdd = "fadd"
   show LM_MO_Sub  = "sub"
+  show LM_MO_FSub = "fsub"
   show LM_MO_Mul  = "mul"
-  show LM_MO_U_Div = "udiv"
-  show LM_MO_S_Div = "sdiv"
-  show LM_MO_F_Div = "fdiv"
-  show LM_MO_U_Rem = "urem"
-  show LM_MO_S_Rem = "srem"
-  show LM_MO_F_Rem = "frem"
+  show LM_MO_FMul = "fmul"
+  show LM_MO_UDiv = "udiv"
+  show LM_MO_SDiv = "sdiv"
+  show LM_MO_FDiv = "fdiv"
+  show LM_MO_URem = "urem"
+  show LM_MO_SRem = "srem"
+  show LM_MO_FRem = "frem"
   show LM_MO_Shl  = "shl"
-  show LM_MO_L_Shr = "lshr"
-  show LM_MO_A_Shr = "ashr"
+  show LM_MO_LShr = "lshr"
+  show LM_MO_AShr = "ashr"
   show LM_MO_And  = "and"
   show LM_MO_Or   = "or"
   show LM_MO_Xor  = "xor"
+
+
+-- | The various LLVM cast operations.
+--   Converts between the various LLVM types.
+data LlvmCastOp
+  = LM_Trunc
+  | LM_Zext
+  | LM_Sext
+  | LM_Fptrunc
+  | LM_Fpext
+  | LM_Fptoui
+  | LM_Fptosi
+  | LM_Uitofp
+  | LM_Sitofp
+  | LM_Ptrtoint
+  | LM_Inttoptr
+  | LM_Bitcast
+  deriving (Eq)
+
+instance Show LlvmCastOp where
+  show LM_Trunc    = "trunc"
+  show LM_Zext     = "zext"
+  show LM_Sext     = "sext"
+  show LM_Fptrunc  = "fptrunc"
+  show LM_Fpext    = "fpext"
+  show LM_Fptoui   = "fptoui"
+  show LM_Fptosi   = "fptosi"
+  show LM_Uitofp   = "uitofp"
+  show LM_Sitofp   = "sitofp"
+  show LM_Ptrtoint = "ptrtoint"
+  show LM_Inttoptr = "inttoptr"
+  show LM_Bitcast  = "bitcast"
 
 
 -- | Some nice types

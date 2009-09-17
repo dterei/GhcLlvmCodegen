@@ -162,13 +162,13 @@ data LlvmExpression
   = Alloca LlvmType Int
                  
   {-
-    MachOp
+    LlvmOp
     Perform the machine operator op on the operands left and right
       * op:    operator
       * left:  left operand
       * right: right operand
   -}
-  | MachOp LlvmMachOp LlvmVar LlvmVar
+  | LlvmOp LlvmMachOp LlvmVar LlvmVar
   
   {-
     Compare
@@ -206,10 +206,11 @@ data LlvmExpression
   {- Cast
      Cast the variable from to the to type. This is an abstraction of three
      cast operators in Llvm, inttoptr, prttoint and bitcast.
+       * cast: Cast type
        * from: Variable to cast
        * to:   type to cast to
   -}                
-  | Cast LlvmVar LlvmType
+  | Cast LlvmCastOp LlvmVar LlvmType
                  
   {-
     Call

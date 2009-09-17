@@ -140,9 +140,9 @@ ppLlvmExpression :: LlvmExpression -> Doc
 ppLlvmExpression expr
   = case expr of
         Alloca      tp amount     -> ppAlloca tp amount
-        MachOp      op left right -> ppMachOp op left right
+        LlvmOp      op left right -> ppMachOp op left right
         Call        dec tp args   -> ppCall tp (ppLlvmFuncDecCall dec args)
-        Cast        from to       -> ppCast from to
+        Cast        op from to    -> ppCast op from to
         Compare     op left right -> ppCmpOp op left right
         GetElemPtr  ptr indexes   -> ppGetElementPtr ptr indexes
         Load        ptr           -> ppLoad ptr
@@ -214,27 +214,27 @@ ppStore rhs lhs =
   (text "store") <+> (text $ show rhs) <> comma <+> (text $ show lhs)
 
 
-ppCast :: LlvmVar -> LlvmType -> Doc
-ppCast from to =
-  let castOp
-        | isInt to && (isPointer $ getVarType from)   = text "ptrtoint"
-        | (isPointer to) && (isInt $ getVarType from) = text "inttoptr"
-        | otherwise                                = text "bitcast"
+ppCast :: LlvmCastOp -> LlvmVar -> LlvmType -> Doc
+ppCast op from to =
+  let castOp = text $ show op
   in castOp <+> (text $ show from) <+> (text "to") <+> (text $ show to)
 
 
 ppMalloc :: LlvmType -> Int -> Doc
 ppMalloc tp amount =
+-- FIX: shouldn't use fix 32bit word size
   (text "malloc") <+> (text $ show tp) <> (text ", i32") <+> (text $ show amount)
 
 
 ppAlloca :: LlvmType -> Int -> Doc
 ppAlloca tp amount =
+-- FIX: shouldn't use fix 32bit word size
   (text "alloca") <+> (text $ show tp) <> (text ", i32") <+> (text $ show amount)
 
 
 ppGetElementPtr :: LlvmVar -> [Int] -> Doc
 ppGetElementPtr ptr idx =
+-- FIX: shouldn't use fix 32bit word size
   let indexes = hcat $ map (((text ", i32") <+>) . text . show) idx
   in (text "getelementptr") <+> (text $ show ptr) <> indexes
 

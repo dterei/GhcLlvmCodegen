@@ -36,6 +36,7 @@ genLlvmProc env (CmmProc info lbl params (ListGraph blocks))
 
         return (env', tops)
 
+
 -- -----------------------------------------------------------------------------
 -- Block code generation
 --
@@ -93,6 +94,7 @@ stmtToInstrs env stmt = case stmt of
     CmmComment s
         -> return (env, [Comment [(unpackFS s)]], [])
 
+-- TODO: Implement
     CmmAssign reg src
         | isFloatType ty -> return (env, [], [])
         | otherwise      -> return (env, [], [])
@@ -128,45 +130,208 @@ stmtToInstrs env stmt = case stmt of
 -- CmmExpr code generation
 --
 
+type ExprData = (LlvmEnv, LlvmVar, LlvmStatements, [LlvmCmmTop])
+
 -- | Convert a CmmExpr to a list of LlvmStatements with the result of the
 --   expression being stored in the returned LlvmVar. Even for simple code
 --   such as literals we take this approach and rely on the LLVM optimiser
 --   to fix up the inefficiency of the code.
-exprToVar :: LlvmEnv
-          -> CmmExpr
-          -> UniqSM (LlvmEnv, LlvmVar, [LlvmStatement], [LlvmCmmTop])
-exprToVar env e = 
-    let v' = LMLocalVar "nothing" i32
-    in case e of
+exprToVar :: LlvmEnv -> CmmExpr -> UniqSM ExprData
+exprToVar env e = case e of
 
-        CmmLit lit
-            -> genLit env lit 
+    CmmLit lit
+        -> genLit env lit 
 
-        CmmLoad e' ty
-            -> genCmmLoad env e' ty
+    CmmLoad e' ty
+        -> genCmmLoad env e' ty
 
-        CmmReg r
-            -> return $ genCmmReg env r
-        
-        CmmMachOp op exprs
-            -> genMachOp env op exprs
+    CmmReg r
+        -> return $ genCmmReg env r
+    
+    CmmMachOp op exprs
+        -> genMachOp env op exprs
+    
+    CmmRegOff r i
+        -> exprToVar env $ expandCmmReg (r, i)
 
-        CmmStackSlot _ _ 
-            -> panic "LlvmCodeGen.CodeGen.exprToVar: CmmStackSlot not supported!"
-        
-        CmmRegOff r i
-            -> exprToVar env $ expandCmmReg (r, i)
+    CmmStackSlot _ _ 
+        -> panic "LlvmCodeGen.CodeGen.exprToVar: CmmStackSlot not supported!"
 
 
 -- | Handle CmmMachOp expressions
-genMachOp :: LlvmEnv -> MachOp -> [CmmExpr]
-          -> UniqSM (LlvmEnv, LlvmVar, [LlvmStatement], [LlvmCmmTop])
-genMachOp env op exprs = return (env, LMLocalVar "nothing" i32, [], [])
+--
+genMachOp :: LlvmEnv -> MachOp -> [CmmExpr] -> UniqSM ExprData
+
+-- | Unary Machop
+genMachOp env op [x] = case op of
+
+    MO_Not w -> 
+        let all1 = LMLitVar $ LMIntLit (-1) (getBitWidth w)
+        in negate (getBitWidth w) all1 LM_MO_Xor
+
+    MO_S_Neg w ->
+        let all0 = LMLitVar $ LMIntLit 0 (getBitWidth w)
+        in negate (getBitWidth w) all0 LM_MO_Sub
+
+    MO_F_Neg w ->
+        let all0 = LMLitVar $ LMFloatLit 0 (getFloatWidth w)
+        in negate (getFloatWidth w) all0 LM_MO_FSub
+
+    MO_SF_Conv _ w -> fiConv (getFloatWidth w) LM_Sitofp
+    MO_FS_Conv _ w -> fiConv (getBitWidth w) LM_Fptosi
+
+    MO_SS_Conv from to
+        -> sameConv from (getBitWidth to) LM_Trunc LM_Sext
+
+    MO_UU_Conv from to
+        -> sameConv from (getBitWidth to) LM_Trunc LM_Zext
+
+    MO_FF_Conv from to
+        -> sameConv from (getFloatWidth to) LM_Fptrunc LM_Fpext
+
+    _ -> panic "LlvmCodeGen.CodeGen.genMachOp: unmatched unary CmmMachOp!"
+
+    where
+        negate ty v2 negOp = do
+            (env', vx, stmts, top) <- exprToVar env x
+            tmp1 <- mkLocalVar ty
+            let stmt1 = Assignment tmp1 (LlvmOp negOp vx v2)
+            return (env', tmp1, stmts ++ [stmt1], top)
+
+        fiConv ty convOp = do
+            (env', vx, stmts, top) <- exprToVar env x
+            tmp1 <- mkLocalVar ty
+            let stmt1 = Assignment tmp1 (Cast convOp vx ty)
+            return (env', tmp1, stmts ++ [stmt1], top)
+
+        sameConv from ty reduce expand = do
+            (env', vx, stmts, top) <- exprToVar env x
+            tmp1 <- mkLocalVar ty
+            if widthInBits from > llvmWidthInBits ty
+                then do -- reduce
+                    let stmt1 = Assignment tmp1 (Cast reduce vx ty)
+                    return (env', tmp1, stmts ++ [stmt1], top)
+                else do -- expand
+                    let stmt1 = Assignment tmp1 (Cast expand vx ty)
+                    return (env', tmp1, stmts ++ [stmt1], top)
+
+
+-- | Binary MachOp
+genMachOp env op [x, y] = case op of
+
+    MO_Eq _   -> genBinComp LM_CMP_Eq
+    MO_Ne _   -> genBinComp LM_CMP_Ne
+
+    MO_S_Gt _ -> genBinComp LM_CMP_Sgt
+    MO_S_Ge _ -> genBinComp LM_CMP_Sge
+    MO_S_Lt _ -> genBinComp LM_CMP_Slt
+    MO_S_Le _ -> genBinComp LM_CMP_Sle
+
+    MO_U_Gt _ -> genBinComp LM_CMP_Ugt
+    MO_U_Ge _ -> genBinComp LM_CMP_Uge
+    MO_U_Lt _ -> genBinComp LM_CMP_Ult
+    MO_U_Le _ -> genBinComp LM_CMP_Ule
+
+    MO_Add _ -> genBinMach LM_MO_Add
+    MO_Sub _ -> genBinMach LM_MO_Sub
+    MO_Mul _ -> genBinMach LM_MO_Mul
+
+    MO_U_MulMayOflo w
+        -> panic "LlvmCodeGen.CodeGen.genMachOp: MO_U_MulMayOflo unsupported!"
+
+    MO_S_MulMayOflo w -> isSMulOK w x y
+
+    MO_S_Quot _ -> genBinMach LM_MO_SDiv
+    MO_S_Rem  _ -> genBinMach LM_MO_SRem
+
+    MO_U_Quot _ -> genBinMach LM_MO_UDiv
+    MO_U_Rem  _ -> genBinMach LM_MO_URem
+
+    MO_F_Eq _ -> genBinComp LM_CMP_Feq
+    MO_F_Ne _ -> genBinComp LM_CMP_Fne
+    MO_F_Gt _ -> genBinComp LM_CMP_Fgt
+    MO_F_Ge _ -> genBinComp LM_CMP_Fge
+    MO_F_Lt _ -> genBinComp LM_CMP_Flt
+    MO_F_Le _ -> genBinComp LM_CMP_Fle
+
+    MO_F_Add  _ -> genBinMach LM_MO_FAdd
+    MO_F_Sub  _ -> genBinMach LM_MO_FSub
+    MO_F_Mul  _ -> genBinMach LM_MO_FMul
+    MO_F_Quot _ -> genBinMach LM_MO_FDiv
+
+    MO_And _   -> genBinMach LM_MO_And
+    MO_Or  _   -> genBinMach LM_MO_Or
+    MO_Xor _   -> genBinMach LM_MO_Xor
+    MO_Shl _   -> genBinMach LM_MO_Shl
+    MO_U_Shr _ -> genBinMach LM_MO_LShr
+    MO_S_Shr _ -> genBinMach LM_MO_AShr
+
+    _ -> panic $ "LlvmCodeGen.CodeGen.genMachOp: unmatched binary CmmMachOp!"
+
+    where
+        binLlvmOp ty binOp = do
+            (env1, vx, stmts1, top1) <- exprToVar env x
+            (env2, vy, stmts2, top2) <- exprToVar env1 y
+            if getVarType vx == getVarType vy
+                then do
+                    tmp1 <- mkLocalVar $ ty vx
+                    let stmt1 = Assignment tmp1 (binOp vx vy)
+                    return (env2, tmp1, stmts1 ++ stmts2 ++ [stmt1], top1 ++ top2)
+                else
+                    panic $ "LlvmCodeGen.CodeGen.genMachOp: comparison between"
+                        ++ " different types!"
+
+        genBinComp cmp = binLlvmOp (\x -> i1) $ Compare cmp
+        
+        genBinMach op = binLlvmOp getVarType (LlvmOp op)
+
+        -- | Detect if overflow will occur in signed multiply of the two
+        --   CmmExpr's. This is the LLVM assembly equivalent of the NCG
+        --   implementation. Its much longer due to type information/safety.
+        isSMulOK :: Width -> CmmExpr -> CmmExpr -> UniqSM ExprData
+        isSMulOK w x y = do
+            (env1, vx, stmts1, top1) <- exprToVar env x
+            (env2, vy, stmts2, top2) <- exprToVar env1 y
+
+            let word  = getVarType vx
+            let word2 = LMInt $ 2 * (llvmWidthInBits $ getVarType vx)
+            let shift = toInteger $ llvmWidthInBits word
+            let shift1 = LMLitVar $ LMIntLit (shift - 1) llvmWord
+            let shift2 = LMLitVar $ LMIntLit shift llvmWord
+
+            if isInt word
+                then do
+                    x1 <- mkLocalVar word2
+                    y1 <- mkLocalVar word2
+                    let s1 = Assignment x1 (Cast LM_Sext vx word2)
+                    let s2 = Assignment y1 (Cast LM_Sext vy word2)
+                    r1 <- mkLocalVar word2
+                    let s3 = Assignment r1 (LlvmOp LM_MO_Mul x1 y1)
+                    rlow1 <- mkLocalVar word
+                    let s4 = Assignment rlow1 (Cast LM_Trunc r1 word)
+                    rlow2 <- mkLocalVar word
+                    let s5 = Assignment rlow2 (LlvmOp LM_MO_AShr rlow1 shift1)
+                    rhigh1 <- mkLocalVar word2
+                    let s6 = Assignment rhigh1 (LlvmOp LM_MO_AShr r1 shift2)
+                    rhigh2 <- mkLocalVar word
+                    let s7 = Assignment rhigh2 (Cast LM_Trunc rhigh1 word)
+                    dst <- mkLocalVar word
+                    let s8 = Assignment dst (LlvmOp LM_MO_Sub rlow2 rhigh2)
+
+                    return (env2, dst, stmts1 ++ stmts2 ++
+                            [s1, s2, s3, s4, s5, s6, s7, s8], top1 ++ top2)
+
+                else
+                    panic $ "LlvmCodeGen.CodeGen.isSMulOK: Not bit type!"
+
+
+-- | More then two expression, invalid!
+genMachOp _ _ _ = panic $ "LlvmCodeGen.CodeGen.genMachOp: More then 2"
+                        ++ " expressions in MachOp!"
 
 
 -- | Handle CmmLoad expression
-genCmmLoad :: LlvmEnv -> CmmExpr -> CmmType
-           -> UniqSM (LlvmEnv, LlvmVar, [LlvmStatement], [LlvmCmmTop])
+genCmmLoad :: LlvmEnv -> CmmExpr -> CmmType -> UniqSM ExprData
 genCmmLoad env e ty = do
     (env', iptr, stmts, tops) <- exprToVar env e
     let ety = getVarType iptr
@@ -174,7 +339,7 @@ genCmmLoad env e ty = do
          True | llvmPtrBits == llvmWidthInBits ety ->  do
                     let pty = LMPointer $ getLlvmType ty
                     ptr <- mkLocalVar pty
-                    let cast = Assignment ptr (Cast iptr pty)
+                    let cast = Assignment ptr (Cast LM_Inttoptr iptr pty)
                     dvar <- mkLocalVar $ getLlvmType ty
                     let load = Assignment dvar (Load ptr)
                     return (env', dvar, stmts ++ [cast, load], tops)
@@ -188,8 +353,7 @@ genCmmLoad env e ty = do
 
 
 -- | Handle CmmReg expression
-genCmmReg :: LlvmEnv -> CmmReg 
-          -> (LlvmEnv, LlvmVar, [LlvmStatement], [LlvmCmmTop])
+genCmmReg :: LlvmEnv -> CmmReg -> ExprData
 genCmmReg env r@(CmmLocal (LocalReg un ty))
   = let name = uniqToStr un
         oty  = Map.lookup name env
@@ -220,15 +384,12 @@ allocReg _ = panic $ "LlvmCodeGen.CodeGen.allocReg: Global reg encountered!"
 
 
 -- | Generate code for a literal
-genLit :: LlvmEnv -> CmmLit
-       -> UniqSM (LlvmEnv, LlvmVar, [LlvmStatement], [LlvmCmmTop])
-
+genLit :: LlvmEnv -> CmmLit -> UniqSM ExprData
 genLit env (CmmInt i w)
   = return (env, LMLitVar $ LMIntLit i (LMInt $ widthInBits w), [], [])
 
 genLit env (CmmFloat r w)
   = return (env, LMLitVar $ LMFloatLit r (getFloatWidth w), [], [])
-
 
 genLit env cmm@(CmmLabel l)
   = let label = strCLabel_llvm l
@@ -241,21 +402,21 @@ genLit env cmm@(CmmLabel l)
                 let ldata = [CmmData Data [([glob], [])]]
                 let env' = Map.insert label (pLower $ getVarType var) env
                 tmp1 <- mkLocalVar llvmWord
-                let stm1 = Assignment tmp1 (Cast var llvmWord)
+                let stm1 = Assignment tmp1 (Cast LM_Ptrtoint var llvmWord)
                 return (env', tmp1, [stm1], ldata)
             -- Referenced data exists in this module, retrieve type and make
             -- pointer to it.
             Just ty' -> do
                 let var = LMGlobalVar label (LMPointer ty') ExternallyVisible
                 tmp1 <- mkLocalVar llvmWord
-                let stm1 = Assignment tmp1 (Cast var llvmWord)
+                let stm1 = Assignment tmp1 (Cast LM_Ptrtoint var llvmWord)
                 return (env, tmp1, [stm1], [])
 
 genLit env (CmmLabelOff label off) = do
     (env', vlbl, stmts, stat) <- genLit env (CmmLabel label)
     let voff = LMLitVar $ LMIntLit (toInteger off) llvmWord
     tmp1 <- mkLocalVar (getVarType vlbl)
-    let stmt1 = Assignment tmp1 (MachOp LM_MO_Add vlbl voff)
+    let stmt1 = Assignment tmp1 (LlvmOp LM_MO_Add vlbl voff)
     return (env', tmp1, stmts ++ [stmt1], stat)
 
 genLit env (CmmLabelDiffOff l1 l2 off) = do
@@ -269,10 +430,12 @@ genLit env (CmmLabelDiffOff l1 l2 off) = do
 
        then do
             tmp1 <- mkLocalVar (getVarType vl1)
-            let stmt1 = Assignment tmp1 (MachOp LM_MO_Sub vl1 vl2)
+            let stmt1 = Assignment tmp1 (LlvmOp LM_MO_Sub vl1 vl2)
             tmp2 <- mkLocalVar (getVarType tmp1)
-            let stmt2 = Assignment tmp2 (MachOp LM_MO_Add tmp1 voff)
-            return (env2, tmp2, stmts1 ++ stmts2 ++ [stmt1, stmt2], stat1 ++ stat2)
+            let stmt2 = Assignment tmp2 (LlvmOp LM_MO_Add tmp1 voff)
+            return (env2, tmp2,
+                    stmts1 ++ stmts2 ++ [stmt1, stmt2],
+                    stat1 ++ stat2)
 
         else
             panic $ "LlvmCodeGen.CodeGen.genLit: CmmLabelDiffOff encountered"
@@ -299,8 +462,9 @@ mkLocalVar ty = do
 -- Expand CmmRegOff
 expandCmmReg :: (CmmReg, Int) -> CmmExpr
 expandCmmReg (reg, off)
-	= CmmMachOp (MO_Add width) [CmmReg reg, CmmLit (CmmInt (fromIntegral off) width)]
-	where width = typeWidth (cmmRegType reg)
+  = let width = typeWidth (cmmRegType reg)
+        voff  = CmmLit $ CmmInt (fromIntegral off) width
+    in CmmMachOp (MO_Add width) [CmmReg reg, voff]
 
 
 -- | Convert a block id into a appropriate string for LLVM use.

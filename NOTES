@@ -17,11 +17,15 @@ Possible Problems
  hex otherwise? If the string is pure 16bit unicode will this be fine? Maybe
  I should be making them an array of 8 bit numbers?
 
- - Check the Integer to Int conversion is OK.
+ - Check the Integer to Int conversion is OK. Am I printing signed/unsigned
+ correctly?
  
  - Do I need to handle the GcPtr CmmType differently from just a bit type?
  
  - Should I be using FiniteMap instead of Data.Map?
+
+ - SPARC/CodeGen/Gen32.hs seems to have a few special cases for CmmMachOp.
+ Perhaps these should also be handled in LLVM to improve performance?
 
 
 Todo
@@ -37,4 +41,17 @@ Todo
  - Use a new Monad instead of passing LlvmEnv around everywhere.
 
  - Llvm module fixed 32bit. Change to work with all word widths.
+
+ - Change names of getFloatWidth and getBitWidth. Not very informative.
+
+ - unify some of the code in MachOp handling.
+
+ - 'commafy' SDoc function to produce comman sep SDoc from list.
+
+ - nice function for creating and assigning expression to new local var.
+
+ - Make list of tmp vars.
+
+ - Shifts don't need type information for literal values of the shift. Other
+ instructions might not either. Check pprLlvm.
 
