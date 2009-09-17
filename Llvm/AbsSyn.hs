@@ -190,11 +190,12 @@ data LlvmExpression
   {-
     Call
     Call a function. The result is the value of the expression.
-      * func:      Signature of the function to call
       * tailJumps: CallType to signal if the function should be tail called
+      * fnptrval:  An LLVM value containing a pointer to a function to be
+                   invoked. Can be indirect. Should be LMFunction type.
       * args:      Concrete arguments for the parameters 
   -}                   
-  | Call LlvmFunctionDecl LlvmCallType [LlvmVar]
+  | Call LlvmCallType LlvmVar [LlvmVar]
                  
   {- 
     Phi

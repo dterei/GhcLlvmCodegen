@@ -57,10 +57,10 @@ pprLlvmCmmTop _ _
 
 -- | Pretty print LLVM data code
 pprLlvmData :: DynFlags -> LlvmData -> Doc
-pprLlvmData _ (globals, alias ) =
+pprLlvmData _ (globals, types ) =
     let globals' = ppLlvmGlobals globals
-        alias'   = ppLlvmTypeAliases alias
-    in alias' $+$ globals'
+        types'   = ppLlvmTypes types
+    in types' $+$ globals'
 
 -- | Pretty print CmmStatic
 pprCmmStatic :: DynFlags -> [CmmStatic] -> Doc

@@ -15,8 +15,8 @@ module Llvm.PpLlvm (
     ppLlvmFunctionDecl,
     ppLlvmFunctions,
     ppLlvmFunction,
-    ppLlvmTypeAlias,
-    ppLlvmTypeAliases
+    ppLlvmType,
+    ppLlvmTypes
 
     ) where
 
@@ -100,18 +100,6 @@ ppLlvmFuncDecSig (LlvmFunctionDecl name link cc retTy argTy params)
       <+> atsym <> (text name) <> lparen <+> ppParams <+> rparen
 
 
-ppLlvmFuncDecCall :: LlvmFunctionDecl -> [LlvmVar] -> Doc
-ppLlvmFuncDecCall d@(LlvmFunctionDecl name link cc retTy argTy params) val
-  = let ppValues = ppCommaJoin val
-        ppArgTy = ppCommaJoin params <>
-                    (case argTy of
-                        VarArgs -> (text ", ...")
-                        FixedArgs -> empty)
-        fnty = space <> lparen <> ppArgTy <> rparen <> (text "*")
-    in (text $ show cc) <+> (text $ show retTy) <> fnty
-      <+> atsym <> (text name) <> lparen <+> ppValues <+> rparen
-
-
 ppLlvmBlocks :: LlvmBlocks -> Doc
 ppLlvmBlocks blocks = vcat $ map ppLlvmBlock blocks
 
@@ -121,12 +109,18 @@ ppLlvmBlock (LlvmBlock blockId stmts)
         $+$ nest 4 (vcat $ map  ppLlvmStatement stmts)
 
 
-ppLlvmTypeAliases :: [LlvmType] -> Doc
-ppLlvmTypeAliases tys = vcat $ map ppLlvmTypeAlias tys
+ppLlvmTypes :: [LlvmType] -> Doc
+ppLlvmTypes tys = vcat $ map ppLlvmType tys
 
-ppLlvmTypeAlias :: LlvmType -> Doc
-ppLlvmTypeAlias al@(LMAlias _ t)
+ppLlvmType :: LlvmType -> Doc
+
+ppLlvmType al@(LMAlias _ t)
   = (text $ show al) <+> equals <+> (text "type") <+> (text $ show t)
+
+ppLlvmType (LMFunction t)
+  = ppLlvmFunctionDecl t
+
+ppLlvmType _ = empty
         
 
 ppLlvmStatement :: LlvmStatement -> Doc
@@ -147,26 +141,36 @@ ppLlvmStatement stmt
 ppLlvmExpression :: LlvmExpression -> Doc
 ppLlvmExpression expr
   = case expr of
-        Alloca      tp amount     -> ppAlloca tp amount
-        LlvmOp      op left right -> ppMachOp op left right
-        Call        dec tp args   -> ppCall tp (ppLlvmFuncDecCall dec args)
-        Cast        op from to    -> ppCast op from to
-        Compare     op left right -> ppCmpOp op left right
-        GetElemPtr  ptr indexes   -> ppGetElementPtr ptr indexes
-        Load        ptr           -> ppLoad ptr
-        Malloc      tp amount     -> ppMalloc tp amount
-        Phi         tp precessors -> ppPhi tp precessors
+        Alloca     tp amount     -> ppAlloca tp amount
+        LlvmOp     op left right -> ppMachOp op left right
+        Call       tp fp args    -> ppCall tp fp args
+        Cast       op from to    -> ppCast op from to
+        Compare    op left right -> ppCmpOp op left right
+        GetElemPtr ptr indexes   -> ppGetElementPtr ptr indexes
+        Load       ptr           -> ppLoad ptr
+        Malloc     tp amount     -> ppMalloc tp amount
+        Phi        tp precessors -> ppPhi tp precessors
 
 
 --------------------------------------------------------------------------------
 -- Print functions
 --------------------------------------------------------------------------------
 
-ppCall :: LlvmCallType -> Doc -> Doc
-ppCall tailCall funcSig =
-  let tailAnot (StdCall)  = empty
-      tailAnot (TailCall) = text "tail "
-   in tailAnot tailCall <> (text "call") <+> funcSig
+ppCall :: LlvmCallType -> LlvmVar -> [LlvmVar]-> Doc
+ppCall ct fptr vals
+    | (LMFunction (LlvmFunctionDecl _ _ cc ret argTy params)) <- getVarType fptr
+      = let tail = if ct == TailCall then text "tail " else empty
+            ppValues = ppCommaJoin vals
+            ppArgTy = ppCommaJoin params <>
+                       (case argTy of
+                           VarArgs -> (text ", ...")
+                           FixedArgs -> empty)
+            fnty = space <> lparen <> ppArgTy <> rparen <> (text "*")
+        in  tail <> (text "call") <+> (text $ show cc) <+> (text $ show ret) <> fnty
+            <+> atsym <> (text $ getName fptr) <> lparen <+> ppValues <+> rparen
+
+    | otherwise
+        = error "ppCall called with non LMFunction type!"
 
 
 ppMachOp :: LlvmMachOp -> LlvmVar -> LlvmVar -> Doc

@@ -102,26 +102,41 @@ stmtToInstrs env stmt = case stmt of
         -> return (env, [], [])
 
     -- Tail call
-    CmmJump arg _
-        -> return (env, [], [])
+    CmmJump arg _ -> genJump env arg
 
     -- CPS, only tail calls, no return's
     CmmReturn _       
         -> panic $ "LlvmCodeGen.CodeGen.stmtToInstrs: return statement should"
                 ++ "have been cps'd away"
 
+
 -- | Tail function calls
+--
 genJump :: LlvmEnv -> CmmExpr -> UniqSM StmtData
 
 -- Call to known function
 genJump env (CmmLit (CmmLabel lbl)) = do
-    let fName = strCLabel_llvm lbl
-    let func = LlvmFunctionDecl fName 
-    return (env, [], [])
+    (env', vf, stmts, top) <- getFunc env lbl
+    let s1 = Expr $ Call TailCall vf []
+    return (env', stmts ++ [s1], top)
 
 -- Call to unknown function / address
 genJump env expr = do
-    return (env, [], [])
+    let fty = llvmFunTy
+    (env', vf, stmts, top) <- exprToVar env expr
+
+    let cast = case getVarType vf of
+         ty | isPointer ty -> LM_Bitcast
+         ty | isInt ty     -> LM_Inttoptr
+
+         ty -> panic $ "LlvmCodeGen.CodeGen.genJump: Expr is of bad type for"
+                    ++ " function call! (" ++ show (ty) ++ ")"
+
+    v1 <- mkLocalVar fty
+    let s1 = Assignment v1 (Cast cast vf fty)
+    let s2 = Expr $ Call TailCall v1 []
+    return (env', stmts ++ [s1,s2], top)
+
 
 
 -- | CmmAssign operation
@@ -437,7 +452,7 @@ genCmmReg env r@(CmmLocal (LocalReg un ty))
         -- FIX: Should remove from env or put in proc only env. This env is
         -- global to module and shouldn't contain local vars. Could also strip
         -- local vars from env at end of proc generation.
-        nenv = Map.insert name (getVarType newv) env
+        nenv = Map.insert name (pLower $ getVarType newv) env
     in case oty of
             Just ety -> (env, (LMLocalVar name ety), [], [])
             Nothing  -> (nenv, newv, stmts, [])
@@ -527,23 +542,31 @@ genLit env (CmmHighStackMark)
 -- Misc
 --
 
---getFunc :: LlvmEnv -> CLabel -> UniqSM (LlvmEnv, LlvmFunctionDecl, [LlvmCmmTop])
---getFunc env lbl
---  = let n  = strCLabel_llvm lbl
---        ty = Map.lookup fn env
---        f  =  llvmFunSig n
---
---        caseFun iy
---            | isInt iy = 
---            | isPointer iy =
---            | otherwise = panic $ ""
---
---    in case ty of
---        Just ty'
---            | ty' == llvmFunTy -> (env, f, [])
---            | otherwise -> caseFun ty'
---
---        Nothing  ->
+getFunc :: LlvmEnv -> CLabel -> UniqSM ExprData
+getFunc env lbl
+  = let ty  = Map.lookup fn env
+        fn  = strCLabel_llvm lbl
+        def =  llvmFunSig lbl ExternallyVisible
+        fty = LMFunction def
+
+    in case ty of
+        -- | Function in module in right form
+        Just ty'@(LMFunction sig) -> do
+            let fun = LMGlobalVar fn ty' (funcLinkage sig)
+            return (env, fun, [], [])
+
+        -- | label in module but not function pointer, convert
+        Just ty' -> do
+            let fun = LMGlobalVar fn ty' ExternallyVisible
+            v1 <- mkLocalVar fty
+            let s1 = Assignment v1 (Cast LM_Bitcast fun fty)
+            return (env, v1, [s1], [])
+
+        -- | label not in module, create external reference
+        Nothing  -> do
+            let fun = LMGlobalVar fn fty ExternallyVisible
+            let top = CmmData Data [([],[fty])]
+            return (env, fun, [], [top])
 
 
 -- | Create a new local var
