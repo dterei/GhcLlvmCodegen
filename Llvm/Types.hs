@@ -171,8 +171,10 @@ instance Show LlvmLit where
 -- | Llvm Static data
 --   This can be decalred in constants
 data LlvmStatic
+  -- | A comment in a static section
+  = LMComment String
   -- | A static variant of a literal value
-  = LMStaticLit LlvmLit
+  | LMStaticLit LlvmLit
   -- | For uninitialised data
   | LMUninitType LlvmType
   -- defines a static string
@@ -193,6 +195,7 @@ data LlvmStatic
   deriving (Eq)
 
 instance Show LlvmStatic where
+  show (LMComment       s) = "; " ++ s
   show (LMStaticLit   l  ) = show l
   show (LMUninitType    t) = show t ++ " undef"
   show (LMString      s t) = show t ++ " c\"" ++ s ++ "\\00\""

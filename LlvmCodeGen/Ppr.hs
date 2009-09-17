@@ -36,7 +36,7 @@ pprLlvmCmmTop :: DynFlags -> LlvmCmmTop -> Doc
 pprLlvmCmmTop dflags (CmmData _ lmdata)
   = vcat $ map (pprLlvmData dflags) lmdata
 
-pprLlvmCmmTop dflags p@(CmmProc info lbl params (ListGraph stmts))
+pprLlvmCmmTop dflags p@(CmmProc info lbl params (ListGraph blocks))
   = (
         let static   = CmmDataLabel (entryLblToInfoLbl lbl) : info
         in if not (null info)
@@ -46,8 +46,8 @@ pprLlvmCmmTop dflags p@(CmmProc info lbl params (ListGraph stmts))
         let link = if (externallyVisibleCLabel lbl)
                         then ExternallyVisible else Internal
             funDec = llvmFunSig lbl link
-            blocks = [LlvmBlock "entry" [Return (LMLitVar $ LMIntLit 0 llvmWord)]]
-            fun = LlvmFunction funDec [NoUnwind] blocks
+            lmblocks = map (\(BasicBlock id stmts) -> LlvmBlock (strBlockId_llvm id) stmts) blocks
+            fun = LlvmFunction funDec [NoUnwind, NoReturn] lmblocks
         in ppLlvmFunction fun
     )
 

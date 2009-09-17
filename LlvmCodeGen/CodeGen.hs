@@ -98,6 +98,7 @@ stmtToInstrs env stmt = case stmt of
     CmmSwitch arg ids    -> genSwitch env arg ids
 
     -- Foreign Call
+    -- TODO: Implement
     CmmCall target result_regs args _ _
         -> return (env, [], [])
 

@@ -95,14 +95,14 @@ cmmDataLlvmGens'
 
 cmmDataLlvmGens' dflags h env [] lmdata
     = do
-        let (env, lmdata') = resolveLlvmDatas dflags env lmdata []
+        let (env', lmdata') = resolveLlvmDatas dflags env lmdata []
         let lmdoc = Prt.vcat $ map (pprLlvmData dflags) lmdata'
         Prt.bufLeftRender h lmdoc
         return env
 
 cmmDataLlvmGens' dflags h env (cmm:cmms) lmdata
     = do
-        let lmdata'@(l, ty, d)  = genLlvmData dflags cmm
+        let lmdata'@(l, ty, d) = genLlvmData dflags cmm
         let env' = Map.insert l ty env
         cmmDataLlvmGens' dflags h env' cmms (lmdata ++ [lmdata'])
 

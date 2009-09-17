@@ -12,8 +12,8 @@ module LlvmCodeGen.Base (
         getLlvmType, getFloatWidth, getBitWidth, llvmWord, llvmFunTy,
         llvmFunSig, llvmPtrBits, genLlvmStr,
 
-        mainCapability, strCLabel_llvm, genCmmLabelRef, genStringLabelRef,
-        llvmSDoc
+        mainCapability, strBlockId_llvm, strCLabel_llvm, genCmmLabelRef,
+        genStringLabelRef, llvmSDoc
 
     ) where
 
@@ -21,6 +21,7 @@ module LlvmCodeGen.Base (
 
 import Llvm
 
+import BlockId
 import CLabel
 import Cmm
 import CmmExpr
@@ -126,6 +127,10 @@ genLlvmStr' w =
 -- | Add external reference to the MainCapability
 mainCapability :: LMGlobal
 mainCapability = genCmmLabelRef mkMainCapabilityLabel
+
+-- | Pretty Print a BlockId
+strBlockId_llvm :: BlockId -> String
+strBlockId_llvm (BlockId u) = strCLabel_llvm $ mkAsmTempLabel u
 
 -- | Pretty print a CLabel
 strCLabel_llvm :: CLabel -> String
