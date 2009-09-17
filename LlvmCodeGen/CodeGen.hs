@@ -108,15 +108,9 @@ stmtToInstrs env stmt = case stmt of
     CmmCall target result_regs args _ _
         -> return (env, [], [])
 
-    CmmBranch id
-        -> let label =  LMLocalVar (blockIdToLlvm id) LMLabel
-           in return (env, [Branch label], [])
-
-    CmmCondBranch arg id
-        -> return (env, [], [])
-
-    CmmSwitch arg ids
-        -> return (env, [], [])
+    CmmBranch id         -> genBranch env id
+    CmmCondBranch arg id -> genCondBranch env arg id
+    CmmSwitch arg ids    -> genSwitch env arg ids
 
     CmmJump arg _
         -> return (env, [], [])
@@ -124,6 +118,55 @@ stmtToInstrs env stmt = case stmt of
     CmmReturn _       
         -> panic $ "LlvmCodeGen.CodeGen.stmtToInstrs: return statement should"
                 ++ "have been cps'd away"
+
+
+-- -----------------------------------------------------------------------------
+--  Branching
+
+-- | Unconditional branch
+genBranch :: LlvmEnv -> BlockId
+          -> UniqSM (LlvmEnv, [LlvmStatement], [LlvmCmmTop])
+genBranch env id =
+    let label = blockIdToLlvm id
+    in return (env, [Branch label], [])
+ 
+
+-- | Conditional branch
+genCondBranch :: LlvmEnv -> CmmExpr -> BlockId
+              -> UniqSM (LlvmEnv, [LlvmStatement], [LlvmCmmTop])
+genCondBranch env cond idT = do
+    idF <- mkUniqStr
+    let labelT = blockIdToLlvm idT
+    let labelF = LMLocalVar idF LMLabel
+    (env', vc, stmts, top) <- exprToVar env cond
+    if getVarType vc == i1
+        then do
+            let stmt1 = BranchIf vc labelT labelF
+            let stmt2 = MkLabel idF
+            return $ (env', stmts ++ [stmt1, stmt2], top)
+        else
+            panic $ "LlvmCodeGen.CodeGen.genCondBranch: Cond expr not bool!"
+
+
+-- | Switch branch
+--
+--   N.B. we remove Nothing's from the list of branches, as they are
+--   'undefined'. However, they may be defined one day, so we better document
+--   this behaviour.
+genSwitch :: LlvmEnv -> CmmExpr -> [Maybe BlockId]
+          -> UniqSM (LlvmEnv, [LlvmStatement], [LlvmCmmTop])
+genSwitch env cond maybe_ids = do
+    (env', vc, stmts, top) <- exprToVar env cond
+    let ty = getVarType vc
+
+    let pairs = [ (ix, id) | (ix,Just id) <- zip ([0..]::[Integer]) maybe_ids ]
+    let labels = map (\(ix, b) -> (mkIntLit ix ty, blockIdToLlvm b)) pairs
+    -- out of range is undefied, so lets just branch to first label
+    -- FIX: Maybe create new error branch instead?
+    let (_, defLbl) = head labels
+
+    let stmt1 = Switch vc defLbl labels
+    return $ (env', stmts ++ [stmt1], top)
 
 
 -- -----------------------------------------------------------------------------
@@ -166,11 +209,11 @@ genMachOp :: LlvmEnv -> MachOp -> [CmmExpr] -> UniqSM ExprData
 genMachOp env op [x] = case op of
 
     MO_Not w -> 
-        let all1 = LMLitVar $ LMIntLit (-1) (getBitWidth w)
+        let all1 = mkIntLit (-1) (getBitWidth w)
         in negate (getBitWidth w) all1 LM_MO_Xor
 
     MO_S_Neg w ->
-        let all0 = LMLitVar $ LMIntLit 0 (getBitWidth w)
+        let all0 = mkIntLit 0 (getBitWidth w)
         in negate (getBitWidth w) all0 LM_MO_Sub
 
     MO_F_Neg w ->
@@ -295,9 +338,9 @@ genMachOp env op [x, y] = case op of
 
             let word  = getVarType vx
             let word2 = LMInt $ 2 * (llvmWidthInBits $ getVarType vx)
-            let shift = toInteger $ llvmWidthInBits word
-            let shift1 = LMLitVar $ LMIntLit (shift - 1) llvmWord
-            let shift2 = LMLitVar $ LMIntLit shift llvmWord
+            let shift = llvmWidthInBits word
+            let shift1 = mkIntLit (shift - 1) llvmWord
+            let shift2 = mkIntLit shift llvmWord
 
             if isInt word
                 then do
@@ -386,7 +429,7 @@ allocReg _ = panic $ "LlvmCodeGen.CodeGen.allocReg: Global reg encountered!"
 -- | Generate code for a literal
 genLit :: LlvmEnv -> CmmLit -> UniqSM ExprData
 genLit env (CmmInt i w)
-  = return (env, LMLitVar $ LMIntLit i (LMInt $ widthInBits w), [], [])
+  = return (env, mkIntLit i (LMInt $ widthInBits w), [], [])
 
 genLit env (CmmFloat r w)
   = return (env, LMLitVar $ LMFloatLit r (getFloatWidth w), [], [])
@@ -414,7 +457,7 @@ genLit env cmm@(CmmLabel l)
 
 genLit env (CmmLabelOff label off) = do
     (env', vlbl, stmts, stat) <- genLit env (CmmLabel label)
-    let voff = LMLitVar $ LMIntLit (toInteger off) llvmWord
+    let voff = mkIntLit off llvmWord
     tmp1 <- mkLocalVar (getVarType vlbl)
     let stmt1 = Assignment tmp1 (LlvmOp LM_MO_Add vlbl voff)
     return (env', tmp1, stmts ++ [stmt1], stat)
@@ -422,7 +465,7 @@ genLit env (CmmLabelOff label off) = do
 genLit env (CmmLabelDiffOff l1 l2 off) = do
     (env1, vl1, stmts1, stat1) <- genLit env (CmmLabel l1)
     (env2, vl2, stmts2, stat2) <- genLit env1 (CmmLabel l2)
-    let voff = LMLitVar $ LMIntLit (toInteger off) llvmWord
+    let voff = mkIntLit off llvmWord
     let ty1 = getVarType vl1
     let ty2 = getVarType vl2
     if (isInt ty1) && (isInt ty2)
@@ -455,8 +498,8 @@ genLit env (CmmHighStackMark)
 -- | Create a new local var
 mkLocalVar :: LlvmType -> UniqSM LlvmVar
 mkLocalVar ty = do
-    us <- getUniqueUs
-    return $ LMLocalVar (uniqToStr us) ty
+    str <- mkUniqStr
+    return $ LMLocalVar str ty
 
 
 -- Expand CmmRegOff
@@ -468,11 +511,23 @@ expandCmmReg (reg, off)
 
 
 -- | Convert a block id into a appropriate string for LLVM use.
-blockIdToLlvm :: BlockId -> String
-blockIdToLlvm (BlockId id) = uniqToStr id
+blockIdToLlvm :: BlockId -> LlvmVar
+blockIdToLlvm (BlockId id) = LMLocalVar (uniqToStr id) LMLabel
+
+
+-- | Create a new uniq string
+mkUniqStr :: UniqSM String
+mkUniqStr = do
+    us <- getUniqueUs
+    return $ uniqToStr us
 
 
 -- | Convert a Unique to a corresponding string representation.
 uniqToStr :: Unique -> String
 uniqToStr u = strCLabel_llvm $ mkAsmTempLabel u
+
+
+-- | Create Llvm int Literal
+mkIntLit :: Integral a => a -> LlvmType -> LlvmVar
+mkIntLit i ty = LMLitVar $ LMIntLit (toInteger i) ty
 
