@@ -64,12 +64,15 @@ basicBlockCodeGen env (BasicBlock id stmts)
   = do (env', instrs, top) <- stmtsToInstrs env stmts ([], [])
        return (env', [(BasicBlock id instrs)], top)
 
+-- -----------------------------------------------------------------------------
+-- CmmStmt code generation
+--
+
+type StmtData = (LlvmEnv, [LlvmStatement], [LlvmCmmTop])
 
 -- | Convert a list of CmmStmt's to LlvmStatement's
-stmtsToInstrs :: LlvmEnv
-              -> [CmmStmt]
-              -> ([LlvmStatement], [LlvmCmmTop])
-              -> UniqSM (LlvmEnv, [LlvmStatement], [LlvmCmmTop])
+stmtsToInstrs :: LlvmEnv -> [CmmStmt] -> ([LlvmStatement], [LlvmCmmTop])
+              -> UniqSM StmtData
 stmtsToInstrs env [] (llvm, top)
   = return (env, llvm, top)
 
@@ -77,63 +80,93 @@ stmtsToInstrs env (stmt : stmts) (llvm, top)
    = do (env', instrs, tops) <- stmtToInstrs env stmt
         stmtsToInstrs env' stmts (llvm ++ instrs, top ++ tops)
 
-
--- -----------------------------------------------------------------------------
--- CmmStmt code generation
---
   
 -- | Convert a CmmStmt to a list of LlvmStatement's
-stmtToInstrs :: LlvmEnv
-             -> CmmStmt
-             -> UniqSM (LlvmEnv, [LlvmStatement], [LlvmCmmTop])
+--
+stmtToInstrs :: LlvmEnv -> CmmStmt
+             -> UniqSM StmtData
 stmtToInstrs env stmt = case stmt of
 
-    CmmNop
-        -> return (env, [], [])
+    CmmNop -> return (env, [], [])
+    CmmComment s -> return (env, [Comment [(unpackFS s)]], [])
 
-    CmmComment s
-        -> return (env, [Comment [(unpackFS s)]], [])
-
--- TODO: Implement
-    CmmAssign reg src
-        | isFloatType ty -> return (env, [], [])
-        | otherwise      -> return (env, [], [])
-        where ty = cmmRegType reg
-
-    CmmStore addr src
-        | isFloatType ty -> return (env, [], [])
-        | otherwise      -> return (env, [], [])
-        where ty = cmmExprType src
-
-    CmmCall target result_regs args _ _
-        -> return (env, [], [])
+    CmmAssign reg src    -> genAssign env reg src
+    CmmStore addr src    -> genStore env addr src
 
     CmmBranch id         -> genBranch env id
     CmmCondBranch arg id -> genCondBranch env arg id
     CmmSwitch arg ids    -> genSwitch env arg ids
 
+    -- Foreign Call
+    CmmCall target result_regs args _ _
+        -> return (env, [], [])
+
+    -- Tail call
     CmmJump arg _
         -> return (env, [], [])
 
+    -- CPS, only tail calls, no return's
     CmmReturn _       
         -> panic $ "LlvmCodeGen.CodeGen.stmtToInstrs: return statement should"
                 ++ "have been cps'd away"
 
+-- | Tail function calls
+genJump :: LlvmEnv -> CmmExpr -> UniqSM StmtData
 
--- -----------------------------------------------------------------------------
---  Branching
+-- Call to known function
+genJump env (CmmLit (CmmLabel lbl)) = do
+    let fName = strCLabel_llvm lbl
+    let func = LlvmFunctionDecl fName 
+    return (env, [], [])
+
+-- Call to unknown function / address
+genJump env expr = do
+    return (env, [], [])
+
+
+-- | CmmAssign operation
+--
+-- We use stack allocated variables for CmmReg. The optimiser will replace
+-- these with registers when possible.
+genAssign :: LlvmEnv -> CmmReg -> CmmExpr -> UniqSM StmtData
+genAssign _ (CmmGlobal _) _
+ = panic $ "The LLVM Back-end doesn't support the use of real registers for"
+        ++ " STG registers. Use an unregistered build instead. They should"
+        ++ " have been removed earlier in the code generation!"
+
+genAssign env reg val = do
+    (env1, vreg, stmts1, top1) <- exprToVar env (CmmReg reg)
+    (env2, vval, stmts2, top2) <- exprToVar env1 val
+    let s1 = Store vval vreg
+    return (env2, stmts1 ++ stmts2 ++ [s1], top1 ++ top2)
+
+
+-- | CmmStore operation
+genStore :: LlvmEnv -> CmmExpr -> CmmExpr -> UniqSM StmtData
+genStore env addr val = do
+    (env1, vaddr, stmts1, top1) <- exprToVar env addr
+    (env2, vval,  stmts2, top2) <- exprToVar env1 val
+    if getVarType vaddr == llvmWord
+        then do
+            let vty = pLift $ getVarType vval
+            vptr <- mkLocalVar vty
+            let s1 = Assignment vptr (Cast LM_Inttoptr vaddr vty)
+            let s2 = Store vval vptr
+            return (env2, stmts1 ++ stmts2 ++ [s1, s2], top1 ++ top2)
+
+        else
+            panic $ "LlvmCodeGen.CodeGen.genStore: ptr not of word size!"
+
 
 -- | Unconditional branch
-genBranch :: LlvmEnv -> BlockId
-          -> UniqSM (LlvmEnv, [LlvmStatement], [LlvmCmmTop])
+genBranch :: LlvmEnv -> BlockId -> UniqSM StmtData
 genBranch env id =
     let label = blockIdToLlvm id
     in return (env, [Branch label], [])
  
 
 -- | Conditional branch
-genCondBranch :: LlvmEnv -> CmmExpr -> BlockId
-              -> UniqSM (LlvmEnv, [LlvmStatement], [LlvmCmmTop])
+genCondBranch :: LlvmEnv -> CmmExpr -> BlockId -> UniqSM StmtData
 genCondBranch env cond idT = do
     idF <- mkUniqStr
     let labelT = blockIdToLlvm idT
@@ -153,8 +186,7 @@ genCondBranch env cond idT = do
 --   N.B. we remove Nothing's from the list of branches, as they are
 --   'undefined'. However, they may be defined one day, so we better document
 --   this behaviour.
-genSwitch :: LlvmEnv -> CmmExpr -> [Maybe BlockId]
-          -> UniqSM (LlvmEnv, [LlvmStatement], [LlvmCmmTop])
+genSwitch :: LlvmEnv -> CmmExpr -> [Maybe BlockId] -> UniqSM StmtData
 genSwitch env cond maybe_ids = do
     (env', vc, stmts, top) <- exprToVar env cond
     let ty = getVarType vc
@@ -494,6 +526,25 @@ genLit env (CmmHighStackMark)
 -- -----------------------------------------------------------------------------
 -- Misc
 --
+
+--getFunc :: LlvmEnv -> CLabel -> UniqSM (LlvmEnv, LlvmFunctionDecl, [LlvmCmmTop])
+--getFunc env lbl
+--  = let n  = strCLabel_llvm lbl
+--        ty = Map.lookup fn env
+--        f  =  llvmFunSig n
+--
+--        caseFun iy
+--            | isInt iy = 
+--            | isPointer iy =
+--            | otherwise = panic $ ""
+--
+--    in case ty of
+--        Just ty'
+--            | ty' == llvmFunTy -> (env, f, [])
+--            | otherwise -> caseFun ty'
+--
+--        Nothing  ->
+
 
 -- | Create a new local var
 mkLocalVar :: LlvmType -> UniqSM LlvmVar

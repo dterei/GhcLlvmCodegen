@@ -27,6 +27,8 @@ Possible Problems
  - SPARC/CodeGen/Gen32.hs seems to have a few special cases for CmmMachOp.
  Perhaps these should also be handled in LLVM to improve performance?
 
+ - tail call only supported on x86/x86-64 and PowerPC. SPARC?
+
 
 Todo
 ~~~~
@@ -54,4 +56,8 @@ Todo
 
  - Shifts don't need type information for literal values of the shift. Other
  instructions might not either. Check pprLlvm.
+
+ - panic should be a new fucntion which handles first text printing.
+
+ - return pointer width in Llvm module
 

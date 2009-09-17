@@ -34,42 +34,17 @@ data LlvmModule = LlvmModule  {
   }
 
 -- | Functions have
---    * funcDecl: The signature of this declared function.
---    * internal: LinkageType of the function.
+--    * funcDecl:  The signature of this declared function.
+--    * funcAttrs: The function attributes.
 --    * body:     The body of the functions.
 data LlvmFunction = LlvmFunction {
         funcDecl    :: LlvmFunctionDecl,
-        funcLinkage :: LlvmLinkageType,
         funcAttrs   :: [LlvmFuncAttr],
         funcBody    :: LlvmBlocks
   }
 
 type LlvmFunctions  = [LlvmFunction]
 
-
--- | A function declaration has the following elements
---    * name:       Unique identifier for the function.
---    * returnType: Type of the returned value
---    * varargs:    ParameterListType indicating if this function uses varargs
---    * params:     Signature of the parameters 
-data LlvmFunctionDecl = LlvmFunctionDecl {
-        decName       :: String,
-        decReturnType :: LlvmType,
-        decVarargs    :: LlvmParameterListType,
-        decParams     :: [LlvmVar]
-  }
-
-instance Show LlvmFunctionDecl where
-  show (LlvmFunctionDecl n r VarArgs p)
-        = (show r) ++ " @" ++ n ++ "(" ++ (show p) ++ ", ...)"
-  show (LlvmFunctionDecl n r FixedArgs p)
-        = (show r) ++ " @" ++ n ++ "(" ++ (show p) ++ ")"
-
-instance Eq LlvmFunctionDecl where
-  (LlvmFunctionDecl n1 r1 v1 p1) == (LlvmFunctionDecl n2 r2 v2 p2)
-        = (n1 == n2) && (r1 == r2) && (v1 == v2) && (p1 == p2)
-
-type LlvmFunctionDecls = [LlvmFunctionDecl]
 
 -- | Llvm Statements
 data LlvmStatement

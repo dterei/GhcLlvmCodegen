@@ -43,11 +43,11 @@ pprLlvmCmmTop dflags p@(CmmProc info lbl params (ListGraph stmts))
             then pprCmmStatic dflags static
             else empty
     ) $+$ (
-        let funDec = LlvmFunctionDecl (strCLabel_llvm lbl) i32 FixedArgs []
-            link = if (externallyVisibleCLabel lbl)
+        let link = if (externallyVisibleCLabel lbl)
                         then ExternallyVisible else Internal
+            funDec = llvmFunSig lbl link
             blocks = [LlvmBlock "entry" [Return (LMLitVar $ LMIntLit 0 llvmWord)]]
-            fun = LlvmFunction funDec link [NoUnwind] blocks
+            fun = LlvmFunction funDec [NoUnwind] blocks
         in ppLlvmFunction fun
     )
 

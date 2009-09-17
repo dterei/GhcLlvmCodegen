@@ -71,12 +71,9 @@ ppLlvmFunctions :: LlvmFunctions -> Doc
 ppLlvmFunctions funcs = vcat $ map ppLlvmFunction funcs
 
 ppLlvmFunction :: LlvmFunction -> Doc
-ppLlvmFunction (LlvmFunction dec link attrs body) =
-  let linkTxt = show link
-      linkDoc   | linkTxt == "" = empty
-                | otherwise     = space <> (text linkTxt)
-      attrDoc = hcat $ intersperse space (map (text . show) attrs)
-  in (text "define") <> linkDoc <+> (ppLlvmFuncDecSig dec)
+ppLlvmFunction (LlvmFunction dec attrs body) =
+  let attrDoc = hcat $ intersperse space (map (text . show) attrs)
+  in (text "define") <+> (ppLlvmFuncDecSig dec)
         <+> attrDoc
         $+$ lbrace
         $+$ ppLlvmBlocks body
@@ -91,17 +88,28 @@ ppLlvmFunctionDecl :: LlvmFunctionDecl -> Doc
 ppLlvmFunctionDecl dec = (text "declare") <+> ppLlvmFuncDecSig dec
 
 ppLlvmFuncDecSig :: LlvmFunctionDecl -> Doc
-ppLlvmFuncDecSig (LlvmFunctionDecl name retType argtype params)
-  = case argtype of
-        VarArgs   -> ppVarargsFunctionSignature name retType params
-        FixedArgs -> ppFunctionSignature name retType params
+ppLlvmFuncDecSig (LlvmFunctionDecl name link cc retTy argTy params)
+  = let linkTxt = show link
+        linkDoc   | linkTxt == "" = empty
+                  | otherwise     = (text linkTxt) <> space
+        ppParams = ppCommaJoin params <>
+                    (case argTy of
+                        VarArgs -> (text ", ...")
+                        FixedArgs -> empty)
+  in linkDoc <> (text $ show cc) <+> (text $ show retTy)
+      <+> atsym <> (text name) <> lparen <+> ppParams <+> rparen
 
 
 ppLlvmFuncDecCall :: LlvmFunctionDecl -> [LlvmVar] -> Doc
-ppLlvmFuncDecCall (LlvmFunctionDecl name retType argtype params) values
-  = case argtype of
-        VarArgs   -> ppVarargsFunctionCall name retType params values
-        FixedArgs -> ppFunctionSignature name retType values
+ppLlvmFuncDecCall d@(LlvmFunctionDecl name link cc retTy argTy params) val
+  = let ppValues = ppCommaJoin val
+        ppArgTy = ppCommaJoin params <>
+                    (case argTy of
+                        VarArgs -> (text ", ...")
+                        FixedArgs -> empty)
+        fnty = space <> lparen <> ppArgTy <> rparen <> (text "*")
+    in (text $ show cc) <+> (text $ show retTy) <> fnty
+      <+> atsym <> (text name) <> lparen <+> ppValues <+> rparen
 
 
 ppLlvmBlocks :: LlvmBlocks -> Doc
@@ -153,28 +161,6 @@ ppLlvmExpression expr
 --------------------------------------------------------------------------------
 -- Print functions
 --------------------------------------------------------------------------------
-
-ppFunctionSignature :: String -> LlvmType -> [LlvmVar] -> Doc
-ppFunctionSignature fnName returnType params =
-  let ppParams = ppCommaJoin params
-   in (text (show returnType)) <+> atsym <> (text fnName)
-        <> lparen <> ppParams <> rparen
-
-
-ppVarargsFunctionSignature :: String -> LlvmType -> [LlvmVar] -> Doc
-ppVarargsFunctionSignature fnName returnType params =
-  let ppParams = ppCommaJoin params <> (text ", ...")
-   in (text $ show returnType) <+> atsym <> (text fnName) <> lparen
-        <+> ppParams <+> rparen
-
-
-ppVarargsFunctionCall :: String -> LlvmType -> [LlvmVar] -> [LlvmVar] -> Doc
-ppVarargsFunctionCall fnName returnType varArgParams params =
-  let ppParams = ppCommaJoin params
-      ppTpList = (ppCommaJoin $ map getVarType varArgParams) <+> (text ", ...")
-   in (text $ show returnType) <+> lparen <+> ppTpList <+> rparen <> (text "*")
-        <+> atsym <> (text fnName) <> lparen <+> ppParams <+> rparen
-
 
 ppCall :: LlvmCallType -> Doc -> Doc
 ppCall tailCall funcSig =

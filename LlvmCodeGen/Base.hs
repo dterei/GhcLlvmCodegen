@@ -10,7 +10,7 @@ module LlvmCodeGen.Base (
         UnresStatic, LlvmEnv,
 
         getLlvmType, getFloatWidth, getBitWidth, llvmWord, llvmFunTy,
-        llvmPtrBits, genLlvmStr,
+        llvmFunSig, llvmPtrBits, genLlvmStr,
 
         mainCapability, strCLabel_llvm, genCmmLabelRef, genStringLabelRef,
         llvmSDoc
@@ -20,7 +20,6 @@ module LlvmCodeGen.Base (
 #include "HsVersions.h"
 
 import Llvm
-import Llvm.PpLlvm
 
 import CLabel
 import Cmm
@@ -80,7 +79,15 @@ llvmWord = getBitWidth wordWidth
 
 -- | Llvm Function type for Cmm function
 llvmFunTy :: LlvmType
-llvmFunTy = LMFunction i32 []
+llvmFunTy
+  = LMFunction $
+        LlvmFunctionDecl "a" ExternallyVisible CC_Fastcc LMVoid FixedArgs []
+
+-- | Llvm Function signature
+llvmFunSig :: CLabel -> LlvmLinkageType -> LlvmFunctionDecl
+llvmFunSig lbl link
+  = let n = strCLabel_llvm lbl
+    in LlvmFunctionDecl n link CC_Fastcc LMVoid FixedArgs []
 
 -- | Pointer width
 llvmPtrBits :: Int

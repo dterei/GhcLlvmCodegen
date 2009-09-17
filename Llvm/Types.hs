@@ -245,7 +245,7 @@ data LlvmType
   -- Struct
   | LMStruct [LlvmType]
   -- function type, used to create pointers to functions
-  | LMFunction LlvmType [LlvmType]
+  | LMFunction LlvmFunctionDecl
   -- a type alias
   | LMAlias String LlvmType
   deriving (Eq)
@@ -265,7 +265,11 @@ instance Show LlvmType where
           [] -> "{}"
           t  -> "{" ++ (show (head t) ++ (commaCat $ tail t)) ++ "}"
 
-  show (LMFunction r p) = show r ++ " (" ++ (commaCat p) ++ ")"
+  show (LMFunction (LlvmFunctionDecl _ _ _ r VarArgs p))
+        = (show r) ++ " (" ++ (show p) ++ ", ...)*"
+  show (LMFunction (LlvmFunctionDecl _ _ _ r FixedArgs p))
+        = (show r) ++ " (" ++ (show p) ++ ")*"
+
   show (LMAlias s t   ) = "%" ++ s
 
 commaCat :: Show a => [a] -> String
@@ -378,13 +382,51 @@ llvmWidthInBits (LMDouble)       = 64
 llvmWidthInBits (LMFloat80)      = 80
 llvmWidthInBits (LMFloat128)     = 128
 -- Really should return the pointer width, but can't do that without support
+-- FIX: return pointer width
 llvmWidthInBits (LMPointer t)    = llvmWidthInBits t
 llvmWidthInBits (LMArray _ t)    = llvmWidthInBits t
 llvmWidthInBits LMLabel          = 0
 llvmWidthInBits LMVoid           = 0
 llvmWidthInBits (LMStruct tys)   = sum $ map llvmWidthInBits tys
-llvmWidthInBits (LMFunction _ _) = 0
+llvmWidthInBits (LMFunction  _)  = 0
 llvmWidthInBits (LMAlias _ t)    = llvmWidthInBits t
+
+
+-- -----------------------------------------------------------------------------
+-- Functions
+--
+
+-- | A function declaration has the following elements
+--    * name:       Unique identifier of the function.
+--    * internal:   LinkageType of the function.
+--    * funCc:      The calling convention of the function.
+--    * returnType: Type of the returned value
+--    * varargs:    ParameterListType indicating if this function uses varargs
+--    * params:     Signature of the parameters 
+data LlvmFunctionDecl = LlvmFunctionDecl {
+        decName       :: String,
+        funcLinkage   :: LlvmLinkageType,
+        funcCc        :: LlvmCallConvention,
+        decReturnType :: LlvmType,
+        decVarargs    :: LlvmParameterListType,
+        decParams     :: [LlvmType]
+  }
+
+instance Show LlvmFunctionDecl where
+  show (LlvmFunctionDecl n l c r VarArgs p)
+        = (show l) ++ " " ++  (show c) ++ " " ++ (show r)
+            ++ " @" ++ n ++ "(" ++ (show p) ++ ", ...)"
+  show (LlvmFunctionDecl n l c r FixedArgs p)
+        = (show l) ++ " " ++  (show c) ++ " " ++ (show r)
+            ++ " @" ++ n ++ "(" ++ (show p) ++ ")"
+
+instance Eq LlvmFunctionDecl where
+  (LlvmFunctionDecl n1 l1 c1 r1 v1 p1) == (LlvmFunctionDecl n2 l2 c2 r2 v2 p2)
+        = (n1 == n2) && (l1 == l2) && (c1 == c2) && (r1 == r2)
+            && (v1 == v2) && (p1 == p2)
+
+type LlvmFunctionDecls = [LlvmFunctionDecl]
+
 
 -- | Different types to call a function.
 data LlvmCallType
@@ -394,6 +436,44 @@ data LlvmCallType
   | TailCall
   deriving (Eq,Show)
 
+-- | Different calling conventions a function can use.
+data LlvmCallConvention
+  -- | The C calling convention
+  --   This calling convention (the default if no other calling convention is
+  --   specified) matches the target C calling conventions. This calling
+  --   convention supports varargs function calls and tolerates some mismatch in
+  --   the declared prototype and implemented declaration of the function (as
+  --   does normal C).
+  = CC_Ccc
+  -- | This calling convention attempts to make calls as fast as possible
+  --   (e.g. by passing things in registers). This calling convention allows
+  --   the target to use whatever tricks it wants to produce fast code for the
+  --   target, without having to conform to an externally specified ABI
+  --   (Application Binary Interface). Implementations of this convention should
+  --   allow arbitrary tail call optimization to be supported. This calling
+  --   convention does not support varargs and requires the prototype of al
+  --   callees to exactly match the prototype of the function definition.
+  | CC_Fastcc
+  -- | This calling convention attempts to make code in the caller as efficient
+  --   as possible under the assumption that the call is not commonly executed.
+  --   As such, these calls often preserve all registers so that the call does
+  --   not break any live ranges in the caller side. This calling convention
+  --   does not support varargs and requires the prototype of all callees to
+  --   exactly match the prototype of the function definition.
+  | CC_Coldcc
+  -- | Any calling convention may be specified by number, allowing
+  --   target-specific calling conventions to be used. Target specific calling
+  --   conventions start at 64.
+  | CC_Ncc Int  
+  deriving (Eq)
+
+instance Show LlvmCallConvention where
+  show CC_Ccc     = "ccc"
+  show CC_Fastcc  = "fastcc"
+  show CC_Coldcc  = "coldcc"
+  show (CC_Ncc i) = "cc " ++ (show i)
+
+
 -- | Functions can have a fixed amount of parameters, or a variable amount.
 data LlvmParameterListType
   -- Fixed amount of arguments.
@@ -401,6 +481,7 @@ data LlvmParameterListType
   -- Variable amount of arguments.
   | VarArgs
   deriving (Eq,Show)
+
 
 -- | Linkage type of a symbol. The description of the constructors is copied from
 --  the Llvm Assembly Language Reference Manual 

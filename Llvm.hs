@@ -27,8 +27,8 @@ module Llvm (
         getGlobalType, pLift, pLower, isInt, isFloat, isPointer,
         llvmWidthInBits,
 
-        LlvmCallType(..), LlvmParameterListType(..), LlvmLinkageType(..),
-        LlvmFuncAttr(..),
+        LlvmCallConvention(..), LlvmCallType(..), LlvmParameterListType(..),
+        LlvmLinkageType(..), LlvmFuncAttr(..),
 
         ppLlvmModule, ppLlvmComments, ppLlvmComment, ppLlvmConstants,
         ppLlvmConstant, ppLlvmGlobals, ppLlvmGlobal, ppLlvmFunctionDecls,
