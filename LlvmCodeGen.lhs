@@ -70,7 +70,7 @@ cmmDataLlvmGens
       -> IO ( LlvmEnv )
 
 cmmDataLlvmGens dflags h []
-  = return ( Map.empty )
+  = return ( initLlvmEnv )
 
 cmmDataLlvmGens dflags h cmm =
     let exData (CmmData s d) = [(s,d)]
@@ -82,7 +82,7 @@ cmmDataLlvmGens dflags h cmm =
         cdata = concat $ map exData cmm
         -- put the functions into the enviornment
         cproc = concat $ map exProclbl cmm
-        env = foldl (\e l -> Map.insert l llvmFunTy e) Map.empty cproc
+        env = foldl (\e l -> Map.insert l llvmFunTy e) initLlvmEnv cproc
     in cmmDataLlvmGens' dflags h env cdata []
       
 cmmDataLlvmGens'
@@ -98,7 +98,7 @@ cmmDataLlvmGens' dflags h env [] lmdata
         let (env', lmdata') = resolveLlvmDatas dflags env lmdata []
         let lmdoc = Prt.vcat $ map (pprLlvmData dflags) lmdata'
         Prt.bufLeftRender h lmdoc
-        return env
+        return env'
 
 cmmDataLlvmGens' dflags h env (cmm:cmms) lmdata
     = do

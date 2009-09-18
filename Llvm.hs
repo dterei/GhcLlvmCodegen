@@ -23,9 +23,9 @@ module Llvm (
 
         LMGlobal, LMString, LMConstant,
         i64, i32, i16, i8, i1,
-        isGlobal, getLitType, getName, getPlainName, getVarType, getStatType,
-        getGlobalType, pLift, pLower, isInt, isFloat, isPointer,
-        llvmWidthInBits,
+        isGlobal, getLitType, getLit, getName, getPlainName, getVarType,
+        getStatType, getGlobalVar, getGlobalType, pVarLower, pLift, pLower,
+        isInt, isFloat, isPointer, llvmWidthInBits,
 
         LlvmCallConvention(..), LlvmCallType(..), LlvmParameterListType(..),
         LlvmLinkageType(..), LlvmFuncAttr(..),

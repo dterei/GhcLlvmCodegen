@@ -158,6 +158,11 @@ ppLlvmExpression expr
 
 ppCall :: LlvmCallType -> LlvmVar -> [LlvmVar]-> Doc
 ppCall ct fptr vals
+    -- if pointer, unwrap
+    | (LMPointer x) <- getVarType fptr
+      = ppCall ct (pVarLower fptr) vals
+
+    -- should be function type otherwise
     | (LMFunction (LlvmFunctionDecl _ _ cc ret argTy params)) <- getVarType fptr
       = let tail = if ct == TailCall then text "tail " else empty
             ppValues = ppCommaJoin vals
@@ -167,8 +172,9 @@ ppCall ct fptr vals
                            FixedArgs -> empty)
             fnty = space <> lparen <> ppArgTy <> rparen <> (text "*")
         in  tail <> (text "call") <+> (text $ show cc) <+> (text $ show ret) <> fnty
-            <+> atsym <> (text $ getName fptr) <> lparen <+> ppValues <+> rparen
+            <+> (text $ getName fptr) <> lparen <+> ppValues <+> rparen
 
+    -- not pointer or function, so error
     | otherwise
         = error "ppCall called with non LMFunction type!"
 
@@ -200,8 +206,8 @@ ppLoad var = (text "load") <+> (text $ show var)
 
 
 ppStore :: LlvmVar -> LlvmVar -> Doc
-ppStore rhs lhs =
-  (text "store") <+> (text $ show rhs) <> comma <+> (text $ show lhs)
+ppStore val dst =
+  (text "store") <+> (text $ show val) <> comma <+> (text $ show dst)
 
 
 ppCast :: LlvmCastOp -> LlvmVar -> LlvmType -> Doc

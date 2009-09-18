@@ -12,8 +12,8 @@ module LlvmCodeGen.Base (
         getLlvmType, getFloatWidth, getBitWidth, llvmWord, llvmFunTy,
         llvmFunSig, llvmPtrBits, genLlvmStr,
 
-        mainCapability, strBlockId_llvm, strCLabel_llvm, genCmmLabelRef,
-        genStringLabelRef, llvmSDoc
+        initLlvmEnv, mainCapability, strBlockId_llvm, strCLabel_llvm,
+        genCmmLabelRef, genStringLabelRef, llvmSDoc
 
     ) where
 
@@ -94,6 +94,13 @@ llvmFunSig lbl link
 -- | Pointer width
 llvmPtrBits :: Int
 llvmPtrBits = widthInBits $ typeWidth gcWord
+
+-- | Get initial LlvmEnv.
+initLlvmEnv :: LlvmEnv
+initLlvmEnv
+  = let n = getPlainName $ getGlobalVar mainCapability
+        t = pLower $ getGlobalType mainCapability
+    in Map.insert n t Map.empty
 
 
 -- ----------------------------------------------------------------------------

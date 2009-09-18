@@ -119,7 +119,8 @@ genJump :: LlvmEnv -> CmmExpr -> UniqSM StmtData
 genJump env (CmmLit (CmmLabel lbl)) = do
     (env', vf, stmts, top) <- getFunc env lbl
     let s1 = Expr $ Call TailCall vf []
-    return (env', stmts ++ [s1], top)
+    let s2 = Return (LMLocalVar "void" LMVoid) 
+    return (env', stmts ++ [s1,s2], top)
 
 -- Call to unknown function / address
 genJump env expr = do
@@ -133,10 +134,11 @@ genJump env expr = do
          ty -> panic $ "LlvmCodeGen.CodeGen.genJump: Expr is of bad type for"
                     ++ " function call! (" ++ show (ty) ++ ")"
 
-    v1 <- mkLocalVar fty
-    let s1 = Assignment v1 (Cast cast vf fty)
+    v1 <- mkLocalVar (pLift fty)
+    let s1 = Assignment v1 (Cast cast vf (pLift fty))
     let s2 = Expr $ Call TailCall v1 []
-    return (env', stmts ++ [s1,s2], top)
+    let s3 = Return (LMLocalVar "void" LMVoid) 
+    return (env', stmts ++ [s1,s2,s3], top)
 
 
 
@@ -560,8 +562,8 @@ getFunc env lbl
         Just ty' -> do
         -- label in module but not function pointer, convert
             let fun = LMGlobalVar fn ty' ExternallyVisible
-            v1 <- mkLocalVar fty
-            let s1 = Assignment v1 (Cast LM_Bitcast fun fty)
+            v1 <- mkLocalVar (pLift fty)
+            let s1 = Assignment v1 (Cast LM_Bitcast fun (pLift fty))
             return (env, v1, [s1], [])
 
         Nothing  -> do

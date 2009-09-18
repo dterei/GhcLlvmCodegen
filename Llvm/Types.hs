@@ -263,20 +263,18 @@ instance Show LlvmType where
   show (LMArray nr tp ) = "[" ++ show nr ++ " x " ++ show tp ++ "]"       
   show (LMLabel       ) = "label"
   show (LMVoid        ) = "void"
-  show (LMStruct tys  )
-      = case tys of
-          [] -> "{}"
-          t  -> "{" ++ (show (head t) ++ (commaCat $ tail t)) ++ "}"
+  show (LMStruct tys  ) = "{" ++ (commaCat tys) ++ "}"
 
   show (LMFunction (LlvmFunctionDecl _ _ _ r VarArgs p))
-        = (show r) ++ " (" ++ (show p) ++ ", ...)*"
+        = (show r) ++ " (" ++ (commaCat p) ++ ", ...)"
   show (LMFunction (LlvmFunctionDecl _ _ _ r FixedArgs p))
-        = (show r) ++ " (" ++ (show p) ++ ")*"
+        = (show r) ++ " (" ++ (commaCat p) ++ ")"
 
   show (LMAlias s t   ) = "%" ++ s
 
 commaCat :: Show a => [a] -> String
-commaCat x = concat $ map (\x -> "," ++ show x) x
+commaCat [] = ""
+commaCat x  = show (head x) ++ (concat $ map (\x -> "," ++ show x) (tail x))
 
 -- | Test if a 'LlvmVar' is global.
 isGlobal :: LlvmVar -> Bool
@@ -288,14 +286,19 @@ isGlobal _                   = False
 getName :: LlvmVar -> String
 getName (LMGlobalVar x _ _ ) = "@" ++ x
 getName (LMLocalVar  x _)    = "%" ++ x
-getName (LMLitVar x)         = show x
+getName (LMLitVar x)         = getLit x
+
+-- | Print a literal value. No type.
+getLit :: LlvmLit -> String
+getLit (LMIntLit i _)   = show i
+getLit (LMFloatLit f _) = show f
 
 -- | Return the variable name or value of the 'LlvmVar'
 --   in a plain textual representation (e.g. @x@, @y@ or @42@).
 getPlainName :: LlvmVar -> String
 getPlainName (LMGlobalVar x _ _) = x
 getPlainName (LMLocalVar  x _)   = x
-getPlainName (LMLitVar x)        = show x
+getPlainName (LMLitVar x)        = getLit x
 
 -- | Return the 'LlvmType' of the 'LlvmVar'
 getVarType :: LlvmVar -> LlvmType
@@ -325,6 +328,10 @@ getStatType (LMPtoI        _ t) = t
 -- | Return the 'LlvmType' of the 'LMGlobal'
 getGlobalType :: LMGlobal -> LlvmType
 getGlobalType (v, _) = getVarType v
+
+-- | Return the 'LlvmVar' part of a 'LMGlobal'
+getGlobalVar :: LMGlobal -> LlvmVar
+getGlobalVar (v, _) = v
 
 -- | Shortcut for 64 bit integer 
 i64 :: LlvmType
@@ -358,6 +365,11 @@ pLift x         = LMPointer x
 pLower :: LlvmType -> LlvmType
 pLower (LMPointer x) = x
 pLower x             = error $ show x ++ " is a unlowerable type, need a pointer"
+
+pVarLower :: LlvmVar -> LlvmVar
+pVarLower (LMGlobalVar s t l) = LMGlobalVar s (pLower t) l
+pVarLower (LMLocalVar s t   ) = LMLocalVar s (pLower t)
+pVarLower (LMLitVar _)        = error $ "Can't lower a literal type!"
 
 -- | Test if the given 'LlvmType' is an integer
 isInt :: LlvmType -> Bool
@@ -418,10 +430,10 @@ data LlvmFunctionDecl = LlvmFunctionDecl {
 instance Show LlvmFunctionDecl where
   show (LlvmFunctionDecl n l c r VarArgs p)
         = (show l) ++ " " ++  (show c) ++ " " ++ (show r)
-            ++ " @" ++ n ++ "(" ++ (show p) ++ ", ...)"
+            ++ " @" ++ n ++ "(" ++ (commaCat p) ++ ", ...)"
   show (LlvmFunctionDecl n l c r FixedArgs p)
         = (show l) ++ " " ++  (show c) ++ " " ++ (show r)
-            ++ " @" ++ n ++ "(" ++ (show p) ++ ")"
+            ++ " @" ++ n ++ "(" ++ (commaCat p) ++ ")"
 
 instance Eq LlvmFunctionDecl where
   (LlvmFunctionDecl n1 l1 c1 r1 v1 p1) == (LlvmFunctionDecl n2 l2 c2 r2 v2 p2)

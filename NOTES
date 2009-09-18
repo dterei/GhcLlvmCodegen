@@ -57,7 +57,7 @@ Todo
  - Shifts don't need type information for literal values of the shift. Other
  instructions might not either. Check pprLlvm.
 
- - panic should be a new fucntion which handles first text printing.
+ - panic should be a new function which handles first text printing.
 
  - return pointer width in Llvm module
 
