@@ -27,9 +27,10 @@ import Cmm
 import CmmExpr
 import DynFlags
 import ErrUtils
-import Outputable ( panic, showSDocOneLine )
+import Outputable ( ppr, panic, showSDocOneLine )
 import qualified Outputable
 import Pretty
+import Unique
 
 import Data.Char
 import qualified Data.Map as Map
@@ -130,12 +131,11 @@ mainCapability = genCmmLabelRef mkMainCapabilityLabel
 
 -- | Pretty Print a BlockId
 strBlockId_llvm :: BlockId -> String
-strBlockId_llvm (BlockId u) = strCLabel_llvm $ mkAsmTempLabel u
+strBlockId_llvm b = (show . llvmSDoc . ppr . getUnique) b
 
 -- | Pretty print a CLabel
 strCLabel_llvm :: CLabel -> String
-strCLabel_llvm l 
-	= show $ llvmSDoc (pprCLabel l)
+strCLabel_llvm l = show $ llvmSDoc (pprCLabel l)
 
 -- | Create an external defenition for a CLabel that is defined in another module.
 genCmmLabelRef :: CLabel -> LMGlobal

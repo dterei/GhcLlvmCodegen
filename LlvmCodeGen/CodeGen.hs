@@ -11,7 +11,7 @@ import CLabel
 import Cmm
 
 import FastString ( unpackFS )
-import Outputable ( panic )
+import Outputable ( ppr, panic )
 import UniqSupply
 import Unique
 
@@ -551,20 +551,21 @@ getFunc env lbl
         fty = LMFunction def
 
     in case ty of
-        -- | Function in module in right form
+
         Just ty'@(LMFunction sig) -> do
+        -- Function in module in right form
             let fun = LMGlobalVar fn ty' (funcLinkage sig)
             return (env, fun, [], [])
 
-        -- | label in module but not function pointer, convert
         Just ty' -> do
+        -- label in module but not function pointer, convert
             let fun = LMGlobalVar fn ty' ExternallyVisible
             v1 <- mkLocalVar fty
             let s1 = Assignment v1 (Cast LM_Bitcast fun fty)
             return (env, v1, [s1], [])
 
-        -- | label not in module, create external reference
         Nothing  -> do
+        -- label not in module, create external reference
             let fun = LMGlobalVar fn fty ExternallyVisible
             let top = CmmData Data [([],[fty])]
             return (env, fun, [], [top])
@@ -599,7 +600,7 @@ mkUniqStr = do
 
 -- | Convert a Unique to a corresponding string representation.
 uniqToStr :: Unique -> String
-uniqToStr u = strCLabel_llvm $ mkAsmTempLabel u
+uniqToStr u = (show . llvmSDoc . ppr) u
 
 
 -- | Create Llvm int Literal

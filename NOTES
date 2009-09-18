@@ -61,3 +61,6 @@ Todo
 
  - return pointer width in Llvm module
 
+ - Look at using LLVM intrinsic functions. There are a few math functions.
+ Also, there is a smul_overflow detect function.
+
