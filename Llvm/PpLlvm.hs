@@ -156,6 +156,8 @@ ppLlvmExpression expr
 -- Print functions
 --------------------------------------------------------------------------------
 
+-- FIX: Should always be a function pointer. So a global var of function type
+-- (since globals are always pointers) or a local var of pointer function type.
 ppCall :: LlvmCallType -> LlvmVar -> [LlvmVar]-> Doc
 ppCall ct fptr vals
     -- if pointer, unwrap

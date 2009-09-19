@@ -38,7 +38,7 @@ pprLlvmCmmTop dflags (CmmData _ lmdata)
 
 pprLlvmCmmTop dflags p@(CmmProc info lbl params (ListGraph blocks))
   = (
-        let static   = CmmDataLabel (entryLblToInfoLbl lbl) : info
+        let static = CmmDataLabel (entryLblToInfoLbl lbl) : info
         in if not (null info)
             then pprCmmStatic dflags static
             else empty
