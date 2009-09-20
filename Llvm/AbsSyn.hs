@@ -1,5 +1,7 @@
 module Llvm.AbsSyn where
 
+#include "HsVersions.h"
+
 import Llvm.Types
 
 -- | Block labels

@@ -36,6 +36,7 @@ module Llvm (
 
     ) where
 
+#include "HsVersions.h"
  
 import Llvm.AbsSyn
 import Llvm.PpLlvm

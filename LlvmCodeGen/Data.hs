@@ -16,7 +16,7 @@ import CLabel
 import Cmm
 
 import DynFlags
-import Outputable ( panic, showSDocOneLine )
+import Outputable ( showSDocOneLine )
 import qualified Outputable
 import Pretty
 
@@ -45,16 +45,17 @@ genLlvmData _ ( _ , (CmmDataLabel lbl):xs) =
         label   = strCLabel_llvm lbl
 
         types   = map getStatTypes static
-        getStatTypes (Left  x) = getLlvmType $ cmmLitType x
+        getStatTypes (Left  x) = cmmToLlvmType $ cmmLitType x
         getStatTypes (Right x) = getStatType x
 
         strucTy = LMStruct types
         alias   = LMAlias (label ++ structStr) strucTy
     in (label, alias, static)
 
-genLlvmData _ _ = panic "Bad CmmData section doesn't start with CLabel!"
+genLlvmData _ _ = panic "genLlvmData: CmmData section doesn't start with label!"
 
-resolveLlvmDatas :: DynFlags -> LlvmEnv -> [LlvmUnresData] -> [LlvmData] -> (LlvmEnv, [LlvmData])
+resolveLlvmDatas :: DynFlags -> LlvmEnv -> [LlvmUnresData] -> [LlvmData]
+                 -> (LlvmEnv, [LlvmData])
 resolveLlvmDatas _ env [] ldata
   = (env, ldata)
 
@@ -99,7 +100,7 @@ resData env (Right stat) = (env, stat, [Nothing])
 resData env (Left cmm@(CmmLabel l)) =
     let label = strCLabel_llvm l
         ty = Map.lookup label env
-        lmty = getLlvmType $ cmmLitType cmm
+        lmty = cmmToLlvmType $ cmmLitType cmm
     in case ty of
             -- Make generic external label defenition and then pointer to it
             Nothing -> 
@@ -146,10 +147,10 @@ genData (CmmStaticLit lit)
     = genStaticLit lit
 
 genData (CmmAlign bytes)
-    = panic "Llvm.Base.genData - Can't handle CmmAlign!"
+    = panic "genData: Can't handle CmmAlign!"
 
 genData (CmmDataLabel lbl)
-    = panic "Llvm.Base.genData - Can't handle data labels not at top of data!"
+    = panic "genData: Can't handle data labels not at top of data!"
 
 
 -- | Pretty print a static literal.
@@ -160,7 +161,7 @@ genStaticLit (CmmInt i w)
     = Right $ LMStaticLit (LMIntLit i (LMInt $ widthInBits w))
 
 genStaticLit (CmmFloat r w)
-    = Right $ LMStaticLit (LMFloatLit r (getFloatWidth w))
+    = Right $ LMStaticLit (LMFloatLit r (widthToLlvmFloat w))
 
 -- Leave unresolved, will fix later
 genStaticLit c@(CmmLabel        _    ) = Left $ c
@@ -171,5 +172,14 @@ genStaticLit c@(CmmLabelDiffOff _ _ _) = Left $ c
 genStaticLit (CmmBlock b) = Left $ CmmLabel $ infoTblLbl b
 
 genStaticLit (CmmHighStackMark)
-    = panic "LlvmCodeGen.Data.genStaticLit - CmmHighStackMark unsupported!"
+    = panic "genStaticLit: CmmHighStackMark unsupported!"
   
+
+-- -----------------------------------------------------------------------------
+-- Misc
+--
+
+-- | error function
+panic :: String -> a
+panic s = Outputable.panic $ "LlvmCodeGen.Data." ++ s
+

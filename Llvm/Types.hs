@@ -2,6 +2,7 @@
 --
 module Llvm.Types where
 
+#include "HsVersions.h"
 
 -- | Llvm compare functions, parameter of the 'Expression_Compare' constructor 
 --   of type 'Expression'

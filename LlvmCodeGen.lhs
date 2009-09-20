@@ -154,11 +154,14 @@ cmmLlvmGen dflags h us env cmm count
     -- cmm to cmm optimisations
     let opt_cmm = cmmToCmm dflags fixed_cmm
 
-    dumpIfSet_dyn dflags Opt_D_dump_opt_cmm "LLVM Cmm Input"
+    dumpIfSet_dyn dflags Opt_D_dump_opt_cmm "Optimised Cmm"
         (pprCmm $ Cmm [opt_cmm])
 
     -- generate native code from cmm
     let ((env', llvmBC), usGen) = initUs usFix $ genLlvmCode dflags env opt_cmm
+
+    dumpIfSet_dyn dflags Opt_D_dump_llvm_opt "LLVM code"
+        (vcat $ map (docToSDoc . pprLlvmCmmTop dflags) llvmBC)
 
     return (usGen, env', llvmBC)
 

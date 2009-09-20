@@ -1,7 +1,9 @@
 -- ----------------------------------------------------------------------------
 -- Handle conversion of CmmProc to LLVM code.
 --
-module LlvmCodeGen.CodeGen where
+module LlvmCodeGen.CodeGen ( genLlvmProc ) where
+
+#include "HsVersions.h"
 
 import Llvm
 import LlvmCodeGen.Base
@@ -13,7 +15,8 @@ import Cmm
 import BasicTypes
 import FastString
 import ForeignCall
-import Outputable ( ppr, panic )
+import Outputable ( ppr )
+import qualified Outputable
 import UniqSupply
 import Unique
 
@@ -109,8 +112,7 @@ stmtToInstrs env stmt = case stmt of
 
     -- CPS, only tail calls, no return's
     CmmReturn _       
-        -> panic $ "LlvmCodeGen.CodeGen.stmtToInstrs: return statement should"
-                ++ "have been cps'd away"
+        -> panic "stmtToInstrs: return statement should have been cps'd away"
 
 
 -- | Foreign Calls
@@ -123,14 +125,14 @@ genCall env target res args ret = do
     -- paramater types
     let arg_type (CmmHinted _ AddrHint) = pLift i8
         -- cast pointers to i8*. Llvm equivalent of void*
-        arg_type (CmmHinted expr _    ) = getLlvmType $ cmmExprType expr
+        arg_type (CmmHinted expr _    ) = cmmToLlvmType $ cmmExprType expr
 
     -- ret type
     let ret_type ([]) = LMVoid
         ret_type ([CmmHinted reg AddrHint]) = pLift i8
-        ret_type ([CmmHinted reg _])        = getLlvmType $ localRegType reg
-        ret_type _ = panic $ "LlvmCodeGen.CodeGen.genCall: Too many return"
-                        ++ " values! Can only handle 0 or 1"
+        ret_type ([CmmHinted reg _])        = cmmToLlvmType $ localRegType reg
+        ret_type t = panic $ "genCall: Too many return values! Can only handle"
+                        ++ " 0 or 1, given " ++ show (length t) ++ "."
 
     -- tail call?
     let callType CmmMayReturn    = StdCall
@@ -179,9 +181,8 @@ genCall env target res args ret = do
                      ty | isPointer ty -> LM_Bitcast
                      ty | isInt ty     -> LM_Inttoptr
 
-                     ty -> panic $ "LlvmCodeGen.CodeGen.genCall: Expr is of bad"
-                                ++ " type for function call! ("
-                                ++ show (ty) ++ ")"
+                     ty -> panic $ "genCall: Expr is of bad type for function"
+                                ++ " call! (" ++ show (ty) ++ ")"
 
                 v2 <- mkLocalVar (pLift fty)
                 let s1 = Assignment v2 $ Cast cast v1 (pLift fty)
@@ -208,9 +209,9 @@ genCall env target res args ret = do
             PrimCallConv -> CC_Ccc
 
     -- get the return register
-    let ret_reg ([CmmHinted reg hint])        = (reg, hint)
-        ret_reg _ = panic $ "LlvmCodeGen.CodeGen.genCall: Too many return"
-                        ++ " registers! Can only handle 0 or 1"
+    let ret_reg ([CmmHinted reg hint]) = (reg, hint)
+        ret_reg t = panic $ "genCall: Bad number of registers! Can only handle"
+                        ++ " 1, given " ++ show (length t) ++ "."
 
     -- make the actual call
     case retTy of
@@ -242,8 +243,8 @@ arg_vars env (CmmHinted e AddrHint:rest) (vars, stmts, tops)
                ty | isPointer ty -> LM_Bitcast
                ty | isInt ty     -> LM_Inttoptr
 
-               _  -> panic $ "LlvmCodeGen.CodeGen.genCall: Can't cast"
-                           ++ " llvmType to i8*!"
+               a  -> panic $ "genCall: Can't cast llvmType to i8*! ("
+                           ++ show a ++ ")"
 
        let s1 = Assignment v2 $ Cast op v1 (pLift i8)
        arg_vars env' rest (vars ++ [v2], stmts ++ stmts' ++ [s1], tops ++ top')
@@ -291,7 +292,7 @@ cmmPrimOpFunctions mop
     MO_F64_Tanh   -> fsLit "tanh"
 
     -- TODO: Handle write barrier
-    _ -> panic $ "LlvmCodeGen.CodeGen.cmmPrimOpFunctions: Unknown callish op!"
+    a -> panic $ "cmmPrimOpFunctions: Unknown callish op! (" ++ show a ++ ")"
 
 
 -- | Tail function calls
@@ -314,8 +315,8 @@ genJump env expr = do
          ty | isPointer ty -> LM_Bitcast
          ty | isInt ty     -> LM_Inttoptr
 
-         ty -> panic $ "LlvmCodeGen.CodeGen.genJump: Expr is of bad type for"
-                    ++ " function call! (" ++ show (ty) ++ ")"
+         ty -> panic $ "genJump: Expr is of bad type for function call! ("
+                     ++ show (ty) ++ ")"
 
     v1 <- mkLocalVar (pLift fty)
     let s1 = Assignment v1 $ Cast cast vf (pLift fty)
@@ -330,9 +331,9 @@ genJump env expr = do
 -- these with registers when possible.
 genAssign :: LlvmEnv -> CmmReg -> CmmExpr -> UniqSM StmtData
 genAssign _ (CmmGlobal _) _
- = panic $ "The LLVM Back-end doesn't support the use of real registers for"
-        ++ " STG registers. Use an unregistered build instead. They should"
-        ++ " have been removed earlier in the code generation!"
+ = panic $ "genAssign: The LLVM Back-end doesn't support the use of real "
+        ++ "registers for STG registers. Use an unregistered build instead. "
+        ++ "They should have been removed earlier in the code generation!"
 
 genAssign env reg val = do
     (env1, vreg, stmts1, top1) <- exprToVar env (CmmReg reg)
@@ -357,7 +358,7 @@ genStore env addr val = do
             return (env2, stmts1 ++ stmts2 ++ [s1, s2], top1 ++ top2)
 
         else
-            panic $ "LlvmCodeGen.CodeGen.genStore: ptr not of word size!"
+            panic $ "genStore: ptr not of word size! (" ++ show vaddr ++ ")"
 
 
 -- | Unconditional branch
@@ -380,7 +381,7 @@ genCondBranch env cond idT = do
             let stmt2 = MkLabel idF
             return $ (env', stmts ++ [stmt1, stmt2], top)
         else
-            panic $ "LlvmCodeGen.CodeGen.genCondBranch: Cond expr not bool!"
+            panic $ "genCondBranch: Cond expr not bool! (" ++ show vc ++ ")"
 
 
 -- | Switch branch
@@ -439,7 +440,7 @@ exprToVar env e = case e of
         -> exprToVar env $ expandCmmReg (r, i)
 
     CmmStackSlot _ _ 
-        -> panic "LlvmCodeGen.CodeGen.exprToVar: CmmStackSlot not supported!"
+        -> panic "exprToVar: CmmStackSlot not supported!"
 
 
 -- | Handle CmmMachOp expressions
@@ -449,30 +450,30 @@ genMachOp :: LlvmEnv -> MachOp -> [CmmExpr] -> UniqSM ExprData
 genMachOp env op [x] = case op of
 
     MO_Not w -> 
-        let all1 = mkIntLit (-1) (getBitWidth w)
-        in negate (getBitWidth w) all1 LM_MO_Xor
+        let all1 = mkIntLit (-1) (widthToLlvmInt w)
+        in negate (widthToLlvmInt w) all1 LM_MO_Xor
 
     MO_S_Neg w ->
-        let all0 = mkIntLit 0 (getBitWidth w)
-        in negate (getBitWidth w) all0 LM_MO_Sub
+        let all0 = mkIntLit 0 (widthToLlvmInt w)
+        in negate (widthToLlvmInt w) all0 LM_MO_Sub
 
     MO_F_Neg w ->
-        let all0 = LMLitVar $ LMFloatLit 0 (getFloatWidth w)
-        in negate (getFloatWidth w) all0 LM_MO_FSub
+        let all0 = LMLitVar $ LMFloatLit 0 (widthToLlvmFloat w)
+        in negate (widthToLlvmFloat w) all0 LM_MO_FSub
 
-    MO_SF_Conv _ w -> fiConv (getFloatWidth w) LM_Sitofp
-    MO_FS_Conv _ w -> fiConv (getBitWidth w) LM_Fptosi
+    MO_SF_Conv _ w -> fiConv (widthToLlvmFloat w) LM_Sitofp
+    MO_FS_Conv _ w -> fiConv (widthToLlvmInt w) LM_Fptosi
 
     MO_SS_Conv from to
-        -> sameConv from (getBitWidth to) LM_Trunc LM_Sext
+        -> sameConv from (widthToLlvmInt to) LM_Trunc LM_Sext
 
     MO_UU_Conv from to
-        -> sameConv from (getBitWidth to) LM_Trunc LM_Zext
+        -> sameConv from (widthToLlvmInt to) LM_Trunc LM_Zext
 
     MO_FF_Conv from to
-        -> sameConv from (getFloatWidth to) LM_Fptrunc LM_Fpext
+        -> sameConv from (widthToLlvmFloat to) LM_Fptrunc LM_Fpext
 
-    _ -> panic "LlvmCodeGen.CodeGen.genMachOp: unmatched unary CmmMachOp!"
+    a -> panic $ "genMachOp: unmatched unary CmmMachOp! (" ++ show a ++ ")"
 
     where
         negate ty v2 negOp = do
@@ -519,8 +520,7 @@ genMachOp env op [x, y] = case op of
     MO_Sub _ -> genBinMach LM_MO_Sub
     MO_Mul _ -> genBinMach LM_MO_Mul
 
-    MO_U_MulMayOflo w
-        -> panic "LlvmCodeGen.CodeGen.genMachOp: MO_U_MulMayOflo unsupported!"
+    MO_U_MulMayOflo w -> panic "genMachOp: MO_U_MulMayOflo unsupported!"
 
     MO_S_MulMayOflo w -> isSMulOK w x y
 
@@ -549,7 +549,7 @@ genMachOp env op [x, y] = case op of
     MO_U_Shr _ -> genBinMach LM_MO_LShr
     MO_S_Shr _ -> genBinMach LM_MO_AShr
 
-    _ -> panic $ "LlvmCodeGen.CodeGen.genMachOp: unmatched binary CmmMachOp!"
+    a -> panic $ "genMachOp: unmatched binary CmmMachOp! (" ++ show a ++ ")"
 
     where
         binLlvmOp ty binOp = do
@@ -561,8 +561,8 @@ genMachOp env op [x, y] = case op of
                     let stmt1 = Assignment tmp1 $ binOp vx vy
                     return (env2, tmp1, stmts1 ++ stmts2 ++ [stmt1], top1 ++ top2)
                 else
-                    panic $ "LlvmCodeGen.CodeGen.genMachOp: comparison between"
-                        ++ " different types!"
+                    panic $ "genMachOp: comparison between different types! ("
+                            ++ show vx ++ ", " ++ show vy ++ ")" 
 
         genBinComp cmp = binLlvmOp (\x -> i1) $ Compare cmp
         
@@ -606,12 +606,11 @@ genMachOp env op [x, y] = case op of
                             [s1, s2, s3, s4, s5, s6, s7, s8], top1 ++ top2)
 
                 else
-                    panic $ "LlvmCodeGen.CodeGen.isSMulOK: Not bit type!"
+                    panic $ "isSMulOK: Not bit type! (" ++ show word ++ ")"
 
 
 -- More then two expression, invalid!
-genMachOp _ _ _ = panic $ "LlvmCodeGen.CodeGen.genMachOp: More then 2"
-                        ++ " expressions in MachOp!"
+genMachOp _ _ _ = panic "genMachOp: More then 2 expressions in MachOp!"
 
 
 -- | Handle CmmLoad expression
@@ -621,19 +620,18 @@ genCmmLoad env e ty = do
     let ety = getVarType iptr
     case (isInt ety) of
          True | llvmPtrBits == llvmWidthInBits ety ->  do
-                    let pty = LMPointer $ getLlvmType ty
+                    let pty = LMPointer $ cmmToLlvmType ty
                     ptr <- mkLocalVar pty
                     let cast = Assignment ptr $ Cast LM_Inttoptr iptr pty
-                    dvar <- mkLocalVar $ getLlvmType ty
+                    dvar <- mkLocalVar $ cmmToLlvmType ty
                     let load = Assignment dvar $ Load ptr
                     return (env', dvar, stmts ++ [cast, load], tops)
 
               | otherwise
-                -> panic $ "LlvmCodeGen.CodeGen.exprToVar: can't cast"
-                        ++ " to pointer as int not of pointer size!"
+                -> panic $ "exprToVar: can't cast to pointer as int not of"
+                        ++ " pointer size!"
 
-         False -> panic $ "LlvmCodeGen.CodeGen.exprToVar: CmmLoad expression"
-                        ++ " is not of type int!"
+         False -> panic "exprToVar: CmmLoad expression is not of type int!"
 
 
 -- | Handle CmmReg expression
@@ -651,20 +649,20 @@ genCmmReg env r@(CmmLocal (LocalReg un ty))
             Just ety -> (env, (LMLocalVar name ety), [], [])
             Nothing  -> (nenv, newv, stmts, [])
 
-genCmmReg _ _ = panic $ "LlvmCodeGen.CodeGen.genCmmReg: Global reg encountered!"
-                    ++ " Registered build not supported!"
+genCmmReg _ _ = panic $ "genCmmReg: Global reg encountered! Registered build"
+                    ++ " not supported!"
 
 
 -- | Allocate a CmmReg on the stack
 allocReg :: CmmReg -> (LlvmVar, [LlvmStatement])
 allocReg (CmmLocal (LocalReg un ty))
-  = let ty' = getLlvmType ty
+  = let ty' = cmmToLlvmType ty
         var = LMLocalVar (uniqToStr un) (LMPointer ty')
         alc = Alloca ty' 1
     in (var, [Assignment var alc])
 
-allocReg _ = panic $ "LlvmCodeGen.CodeGen.allocReg: Global reg encountered!"
-                    ++ " Registered build not supported!"
+allocReg _ = panic $ "allocReg: Global reg encountered! Registered build not"
+                    ++ " supported!"
 
 
 -- | Generate code for a literal
@@ -673,12 +671,12 @@ genLit env (CmmInt i w)
   = return (env, mkIntLit i (LMInt $ widthInBits w), [], [])
 
 genLit env (CmmFloat r w)
-  = return (env, LMLitVar $ LMFloatLit r (getFloatWidth w), [], [])
+  = return (env, LMLitVar $ LMFloatLit r (widthToLlvmFloat w), [], [])
 
 genLit env cmm@(CmmLabel l)
   = let label = strCLabel_llvm l
         ty = Map.lookup label env
-        lmty = getLlvmType $ cmmLitType cmm
+        lmty = cmmToLlvmType $ cmmLitType cmm
     in case ty of
             -- Make generic external label defenition and then pointer to it
             Nothing -> do 
@@ -722,14 +720,13 @@ genLit env (CmmLabelDiffOff l1 l2 off) = do
                     stat1 ++ stat2)
 
         else
-            panic $ "LlvmCodeGen.CodeGen.genLit: CmmLabelDiffOff encountered"
-                    ++ " with different label types!"
+            panic "genLit: CmmLabelDiffOff encountered with different label ty!"
 
 genLit env (CmmBlock b)
   = genLit env (CmmLabel $ infoTblLbl b)
 
 genLit env (CmmHighStackMark)
-  = panic "LlvmCodeGen.Data.genStaticLit - CmmHighStackMark unsupported!"
+  = panic "genStaticLit - CmmHighStackMark unsupported!"
   
 
 -- -----------------------------------------------------------------------------
@@ -804,4 +801,9 @@ uniqToStr u = (show . llvmSDoc . ppr) u
 -- | Create Llvm int Literal
 mkIntLit :: Integral a => a -> LlvmType -> LlvmVar
 mkIntLit i ty = LMLitVar $ LMIntLit (toInteger i) ty
+
+
+-- | error function
+panic :: String -> a
+panic s = Outputable.panic $ "LlvmCodeGen.CodeGen." ++ s
 

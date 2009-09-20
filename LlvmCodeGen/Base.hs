@@ -9,7 +9,7 @@ module LlvmCodeGen.Base (
         LlvmCmmTop, LlvmBasicBlock, LlvmUnresData, LlvmData, UnresLabel,
         UnresStatic, LlvmEnv,
 
-        getLlvmType, getFloatWidth, getBitWidth, llvmWord, llvmFunTy,
+        cmmToLlvmType, widthToLlvmFloat, widthToLlvmInt, llvmWord, llvmFunTy,
         llvmFunSig, llvmPtrBits, genLlvmStr,
 
         initLlvmEnv, mainCapability, strBlockId_llvm, strCLabel_llvm,
@@ -27,7 +27,7 @@ import Cmm
 import CmmExpr
 import DynFlags
 import ErrUtils
-import Outputable ( ppr, panic, showSDocOneLine )
+import Outputable ( ppr, showSDocOneLine )
 import qualified Outputable
 import Pretty
 import Unique
@@ -59,25 +59,25 @@ type LlvmEnv = Map.Map String LlvmType
 --
 
 -- | Translate a basic CmmType to an LlvmType.
-getLlvmType :: CmmType -> LlvmType
-getLlvmType ty | isFloatType ty = getFloatWidth $ typeWidth ty
-               | otherwise      = getBitWidth   $ typeWidth ty
+cmmToLlvmType :: CmmType -> LlvmType
+cmmToLlvmType ty | isFloatType ty = widthToLlvmFloat $ typeWidth ty
+               | otherwise      = widthToLlvmInt   $ typeWidth ty
 
 -- | Translate a Cmm Float Width to a LlvmType.
-getFloatWidth :: Width -> LlvmType
-getFloatWidth W32  = LMFloat
-getFloatWidth W64  = LMDouble
-getFloatWidth W80  = LMFloat80
-getFloatWidth W128 = LMFloat128
-getFloatWidth _    = panic "LlvmCodeGen.Data.getFloatWidth - Invalid float size"
+widthToLlvmFloat :: Width -> LlvmType
+widthToLlvmFloat W32  = LMFloat
+widthToLlvmFloat W64  = LMDouble
+widthToLlvmFloat W80  = LMFloat80
+widthToLlvmFloat W128 = LMFloat128
+widthToLlvmFloat w    = panic $ "widthToLlvmFloat: Invalid float size, " ++ show w 
 
 -- | Translate a Cmm Bit Width to a LlvmType.
-getBitWidth :: Width -> LlvmType
-getBitWidth w = LMInt $ widthInBits w
+widthToLlvmInt :: Width -> LlvmType
+widthToLlvmInt w = LMInt $ widthInBits w
 
 -- | Llvm word
 llvmWord :: LlvmType
-llvmWord = getBitWidth wordWidth
+llvmWord = widthToLlvmInt wordWidth
 
 -- | Llvm Function type for Cmm function
 llvmFunTy :: LlvmType
@@ -120,10 +120,10 @@ genLlvmStr' w =
 
         hex w' = let s = showHex w' ""
                  in case s of
-                     []       -> panic "Llvm.Base.genLlvmStr' - returned nothing"
+                     []       -> panic "genLlvmStr': returned nothing"
                      (x:[])   -> ['\\','0',(toUpper x)]
                      (x:y:[]) -> ['\\',(toUpper x),(toUpper y)]
-                     _        -> panic "Llvm.Base.genLlvmStr' - returned too much"
+                     _        -> panic "genLlvmStr': returned too much"
 
     in conv (chr $ fromIntegral w) 
 
@@ -164,4 +164,8 @@ genStringLabelRef cl =
 llvmSDoc :: Outputable.SDoc -> Doc
 llvmSDoc d 
 	= Outputable.withPprStyleDoc (Outputable.mkCodeStyle Outputable.AsmStyle) d
+
+-- | error function
+panic :: String -> a
+panic s = Outputable.panic $ "LlvmCodeGen.Base." ++ s
 

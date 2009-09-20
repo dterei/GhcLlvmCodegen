@@ -16,7 +16,7 @@ import LlvmCodeGen.Data
 import CLabel
 import Cmm
 import DynFlags
-import Outputable ( panic, showSDocOneLine )
+import Outputable ( showSDocOneLine )
 import qualified Outputable
 import Pretty
 
@@ -52,7 +52,8 @@ pprLlvmCmmTop dflags p@(CmmProc info lbl params (ListGraph blocks))
     )
 
 pprLlvmCmmTop _ _
-  = Outputable.pprTrace "pprLlvmCmmTop not implemented!" Outputable.empty empty
+  = Outputable.pprTrace "LlvmCodeGen.Ppr.pprLlvmCmmTop not implemented!"
+          Outputable.empty empty
 
 
 -- | Pretty print LLVM data code
@@ -61,6 +62,7 @@ pprLlvmData _ (globals, types ) =
     let globals' = ppLlvmGlobals globals
         types'   = ppLlvmTypes types
     in types' $+$ globals'
+
 
 -- | Pretty print CmmStatic
 pprCmmStatic :: DynFlags -> [CmmStatic] -> Doc

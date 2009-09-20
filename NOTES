@@ -8,7 +8,9 @@ Possible Problems
 
  - When converting Rational's to floats and doubles, we use special tags for
  unrepresentable numbers, such as NAN, INFINITY... ect. Not sure if this is
- actual valid in LLVM.
+ actual valid in LLVM. NO they aren't, need to encode to real numbers.
+
+ - Can't seem to find any evidence of pointer tagging. Is it still used?
 
  - Check that the approach taken for CmmBlock and CmmLabelDiff off in CmmData
  sections is correct.
@@ -29,6 +31,8 @@ Possible Problems
 
  - tail call only supported on x86/x86-64 and PowerPC. SPARC?
 
+ - Do I need to specify the data layout?
+
 
 Todo
 ~~~~
@@ -36,7 +40,7 @@ Todo
  - Fix warnings.
 
  - Improve Type saftey of LLVM module (e.g split out pointers to own data type,
- to limit where they can be used).
+ to limit where they can be used). More type checking in ppr stage.
 
  - Use OrdList instead of [].
 
@@ -44,20 +48,7 @@ Todo
 
  - Llvm module fixed 32bit. Change to work with all word widths.
 
- - Change names of getFloatWidth and getBitWidth. Not very informative.
-
- - unify some of the code in MachOp handling.
-
- - 'commafy' SDoc function to produce comman sep SDoc from list.
-
  - nice function for creating and assigning expression to new local var.
-
- - Make list of tmp vars.
-
- - Shifts don't need type information for literal values of the shift. Other
- instructions might not either. Check pprLlvm.
-
- - panic should be a new function which handles first text printing.
 
  - return pointer width in Llvm module
 
