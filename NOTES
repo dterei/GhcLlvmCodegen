@@ -64,3 +64,6 @@ Todo
  - Look at using LLVM intrinsic functions. There are a few math functions.
  Also, there is a smul_overflow detect function.
 
+ - Create unified cast method, which generates the code to cast any LlvmType to
+ another LlvmType.
+
