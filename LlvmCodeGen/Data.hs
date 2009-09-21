@@ -50,7 +50,7 @@ genLlvmData _ ( _ , (CmmDataLabel lbl):xs) =
 
         strucTy = LMStruct types
         alias   = LMAlias (label ++ structStr) strucTy
-    in (label, alias, static)
+    in (lbl, alias, static)
 
 genLlvmData _ _ = panic "genLlvmData: CmmData section doesn't start with label!"
 
@@ -65,11 +65,14 @@ resolveLlvmDatas dflags env (udata : rest) ldata
 
 -- | Fix up CLabel references now that we should have passed all CmmData.
 resolveLlvmData :: DynFlags -> LlvmEnv -> LlvmUnresData -> (LlvmEnv, LlvmData)
-resolveLlvmData _ env (label, alias, unres) =
+resolveLlvmData _ env (lbl, alias, unres) =
     let (env', static, refs) = resDatas env unres ([], [])
         refs'          = catMaybes refs
         struct         = Just $ LMStaticStruc static alias
-        glob           = LMGlobalVar label alias ExternallyVisible
+        label          = strCLabel_llvm lbl
+        link           = if (externallyVisibleCLabel lbl)
+                            then ExternallyVisible else Internal
+        glob           = LMGlobalVar label alias link
     in (env', (refs' ++ [(glob, struct)], [alias]))
 
 

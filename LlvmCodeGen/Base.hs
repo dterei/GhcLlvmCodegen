@@ -44,7 +44,7 @@ import Numeric
 type LlvmCmmTop = GenCmmTop LlvmData [CmmStatic] (ListGraph LlvmStatement)
 type LlvmBasicBlock = GenBasicBlock LlvmStatement
 
-type LlvmUnresData = (String, LlvmType, [UnresStatic])
+type LlvmUnresData = (CLabel, LlvmType, [UnresStatic])
 
 -- (data, type aliases)
 type LlvmData = ([LMGlobal], [LlvmType])

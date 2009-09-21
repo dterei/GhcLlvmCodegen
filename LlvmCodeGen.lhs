@@ -103,7 +103,7 @@ cmmDataLlvmGens' dflags h env [] lmdata
 cmmDataLlvmGens' dflags h env (cmm:cmms) lmdata
     = do
         let lmdata'@(l, ty, d) = genLlvmData dflags cmm
-        let env' = Map.insert l ty env
+        let env' = Map.insert (strCLabel_llvm l) ty env
         cmmDataLlvmGens' dflags h env' cmms (lmdata ++ [lmdata'])
 
 
