@@ -40,9 +40,9 @@ import System.IO
 llvmCodeGen :: DynFlags -> Handle -> UniqSupply -> [RawCmm] -> IO ()
 llvmCodeGen dflags h us cmms
   = do
-      putMsg dflags (text "llvmCodeGen: Not yet supported! will FAIL!")
-      putMsg dflags (text $ "Please use the C (-fvia-C) or native code"
-                 ++ " generation backend (-fasm)")
+      -- putMsg dflags (text "llvmCodeGen: Not yet supported! will FAIL!")
+      -- putMsg dflags (text $ "Please use the C (-fvia-C) or native code"
+      --                ++ " generation backend (-fasm)")
 
       let cmm = concat $ map extractRawCmm cmms
 

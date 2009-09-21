@@ -93,7 +93,8 @@ stmtToInstrs :: LlvmEnv -> CmmStmt
 stmtToInstrs env stmt = case stmt of
 
     CmmNop               -> return (env, [], [])
-    CmmComment s         -> return (env, [Comment [(unpackFS s)]], [])
+    CmmComment s         -> return (env, [], []) -- nuke comments
+--  CmmComment s         -> return (env, [Comment [(unpackFS s)]], [])
 
     CmmAssign reg src    -> genAssign env reg src
     CmmStore addr src    -> genStore env addr src
