@@ -104,7 +104,6 @@ stmtToInstrs env stmt = case stmt of
     CmmSwitch arg ids    -> genSwitch env arg ids
 
     -- Foreign Call
-    -- TODO: Implement
     CmmCall target res args _ ret
         -> genCall env target res args ret
 
@@ -337,15 +336,13 @@ genAssign _ (CmmGlobal _) _
         ++ "They should have been removed earlier in the code generation!"
 
 genAssign env reg val = do
-    (env1, vreg, stmts1, top1) <- exprToVar env (CmmReg reg)
+    let (env1, vreg, stmts1, top1) = genCmmReg env reg
     (env2, vval, stmts2, top2) <- exprToVar env1 val
     let s1 = Store vval vreg
     return (env2, stmts1 ++ stmts2 ++ [s1], top1 ++ top2)
 
 
 -- | CmmStore operation
---
--- TODO: Should be using cmmExprType to figure out rhs type?
 genStore :: LlvmEnv -> CmmExpr -> CmmExpr -> UniqSM StmtData
 genStore env addr val = do
     (env1, vaddr, stmts1, top1) <- exprToVar env addr
@@ -419,9 +416,7 @@ type ExprData = (LlvmEnv, LlvmVar, LlvmStatements, [LlvmCmmTop])
 
 
 -- | Convert a CmmExpr to a list of LlvmStatements with the result of the
---   expression being stored in the returned LlvmVar. Even for simple code
---   such as literals we take this approach and rely on the LLVM optimiser
---   to fix up the inefficiency of the code.
+--   expression being stored in the returned LlvmVar.
 exprToVar :: LlvmEnv -> CmmExpr -> UniqSM ExprData
 exprToVar env e = case e of
 
@@ -431,8 +426,13 @@ exprToVar env e = case e of
     CmmLoad e' ty
         -> genCmmLoad env e' ty
 
-    CmmReg r
-        -> return $ genCmmReg env r
+    -- Cmmreg in expression is the value, so must load. If you want actual
+    -- reg pointer, call genCmmReg directly.
+    CmmReg r -> do
+        let (env', vreg, stmts, top) = genCmmReg env r
+        v1 <- mkLocalVar (pLower $ getVarType vreg)
+        let s1 = Assignment v1 $ Load vreg
+        return (env', v1, stmts ++ [s1], top)
     
     CmmMachOp op exprs
         -> genMachOp env op exprs
@@ -636,6 +636,11 @@ genCmmLoad env e ty = do
 
 
 -- | Handle CmmReg expression
+--
+-- We allocate CmmReg on the stack. This avoids having to map a CmmReg to an
+-- equivalent SSA form and avoids having to deal with Phi node insertion.
+-- This is also the approach llvm-gcc takes for C variables. The LLVM optimiser
+-- can optimise this code to Phi form.
 genCmmReg :: LlvmEnv -> CmmReg -> ExprData
 genCmmReg env r@(CmmLocal (LocalReg un ty))
   = let name = uniqToStr un
@@ -647,7 +652,7 @@ genCmmReg env r@(CmmLocal (LocalReg un ty))
         -- local vars from env at end of proc generation.
         nenv = Map.insert name (pLower $ getVarType newv) env
     in case oty of
-            Just ety -> (env, (LMLocalVar name ety), [], [])
+            Just ety -> (env, (LMLocalVar name $ pLift ety), [], [])
             Nothing  -> (nenv, newv, stmts, [])
 
 genCmmReg _ _ = panic $ "genCmmReg: Global reg encountered! Registered build"
