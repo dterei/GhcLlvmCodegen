@@ -226,7 +226,7 @@ genCall env target res args ret = do
             let s1 = Assignment v1 $ Call ccTy fptr argVars
             let (env3, vreg, stmts3, top3) = genCmmReg env2 (CmmLocal creg)
             -- TODO: May need a cast operation
-            let s2 = Store vreg v1
+            let s2 = Store v1 vreg
             return (env3, stmts1 ++ stmts2 ++ stmts3 ++ [s1,s2], top1 ++ top2 ++ top3)
 
 
