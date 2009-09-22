@@ -57,4 +57,16 @@ Todo
 
  - Create unified cast method, which generates the code to cast any LlvmType to
  another LlvmType.
+ 
+ - Write Barrier function.
+
+ - Casting after function call.
+
+ - X86 stdcall convention.
+
+BUGS
+~~~~
+
+ - Bug with lists of floats ([Float]). Think to do with incorrect size since
+ a list of doubles works fine. See ghc bug $1852.
 
