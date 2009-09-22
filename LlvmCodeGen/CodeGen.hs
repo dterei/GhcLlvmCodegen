@@ -94,8 +94,8 @@ stmtToInstrs :: LlvmEnv -> CmmStmt
 stmtToInstrs env stmt = case stmt of
 
     CmmNop               -> return (env, [], [])
---  CmmComment s         -> return (env, [], []) -- nuke comments
-    CmmComment s         -> return (env, [Comment (lines $ unpackFS s)], [])
+    CmmComment s         -> return (env, [], []) -- nuke comments
+--  CmmComment s         -> return (env, [Comment (lines $ unpackFS s)], [])
 
     CmmAssign reg src    -> genAssign env reg src
     CmmStore addr src    -> genStore env addr src
@@ -581,14 +581,8 @@ genMachOp env opt op [x, y] = case op of
                     let stmt1 = Assignment tmp1 $ binOp vx vy
                     return (env2, tmp1, stmts1 ++ stmts2 ++ [stmt1], top1 ++ top2)
                 else do
-                    -- Error, but do anyway for debugging
-                    let d1 = commentExpr x
-                    let d2 = commentExpr y
-                    v1 <- mkLocalVar $ ty vx
-                    let s1 = Assignment v1 $ binOp vx vy
-                    return (env2, v1, [d1] ++ stmts1 ++ [d2] ++ stmts2 ++ [s1], top1 ++ top2)
-                    -- panic $ "genMachOp: comparison between different types! ("
-                    --         ++ show vx ++ ", " ++ show vy ++ ")" 
+                    panic $ "genMachOp: comparison between different types! ("
+                            ++ show vx ++ ", " ++ show vy ++ ")" 
 
         -- | Need to use EOption here as Cmm expects word size results from
         -- comparisons while llvm return i1. Need to extend to llvmWord type
@@ -679,7 +673,8 @@ genCmmLoad env e ty = do
                     return (env', dvar, stmts ++ [cast, load], tops)
 
               | otherwise ->  do
-                    let d1 = Comment [(showSDocOneLine $ PprCmm.pprExpr e)]
+                    -- FIX: Hitting sometimes
+                    let d1 = commentExpr e
                     let pty = LMPointer $ cmmToLlvmType ty
                     ptr <- mkLocalVar pty
                     let cast = Assignment ptr $ Cast LM_Inttoptr iptr pty

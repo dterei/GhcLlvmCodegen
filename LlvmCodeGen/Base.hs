@@ -114,16 +114,16 @@ genLlvmStr s = concatMap genLlvmStr' s
 genLlvmStr' :: Word8 -> String
 genLlvmStr' w =
     let conv c | isLlvmOk c = [c]
-                          | otherwise  = hex w
+               | otherwise  = hex w
                 
-        isLlvmOk l = isAscii l && isPrint l
+        isLlvmOk l = isAscii l && isPrint l && l /= '"'
 
-        hex w' = let s = showHex w' ""
-                 in case s of
-                     []       -> panic "genLlvmStr': returned nothing"
-                     (x:[])   -> ['\\','0',(toUpper x)]
-                     (x:y:[]) -> ['\\',(toUpper x),(toUpper y)]
-                     _        -> panic "genLlvmStr': returned too much"
+        hex l = let s = showHex l ""
+                in case s of
+                    []       -> panic "genLlvmStr': returned nothing"
+                    (x:[])   -> ['\\','0',(toUpper x)]
+                    (x:y:[]) -> ['\\',(toUpper x),(toUpper y)]
+                    _        -> panic "genLlvmStr': returned too much"
 
     in conv (chr $ fromIntegral w) 
 
