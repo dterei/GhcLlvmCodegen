@@ -64,9 +64,14 @@ Todo
 
  - X86 stdcall convention.
 
+ - Rearrange some functions and files better.
+
 BUGS
 ~~~~
 
  - Bug with lists of floats ([Float]). Think to do with incorrect size since
  a list of doubles works fine. See ghc bug $1852.
+
+ - Generate incorrect code for Happy generated hs files. Errors with an out of
+ range problem.
 
