@@ -116,7 +116,9 @@ genLlvmStr' w =
     let conv c | isLlvmOk c = [c]
                | otherwise  = hex w
                 
-        isLlvmOk l = isAscii l && isPrint l && l /= '"'
+        -- BUG: Bug with this version
+        --isLlvmOk l = isAscii l && isPrint l && l /= '"'
+        isLlvmOk _ = False
 
         hex l = let s = showHex l ""
                 in case s of

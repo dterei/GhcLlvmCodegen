@@ -672,19 +672,9 @@ genCmmLoad env e ty = do
                     let load = Assignment dvar $ Load ptr
                     return (env', dvar, stmts ++ [cast, load], tops)
 
-              | otherwise ->  do
-                    -- FIX: Hitting sometimes
-                    let d1 = commentExpr e
-                    let pty = LMPointer $ cmmToLlvmType ty
-                    ptr <- mkLocalVar pty
-                    let cast = Assignment ptr $ Cast LM_Inttoptr iptr pty
-                    dvar <- mkLocalVar $ cmmToLlvmType ty
-                    let load = Assignment dvar $ Load ptr
-                    return (env', dvar, [d1] ++ stmts ++ [cast, load], tops)
-
-              -- | otherwise
-              --   -> panic $ "exprToVar: can't cast to pointer as int not of"
-              --           ++ " pointer size!"
+              | otherwise
+                -> panic $ "exprToVar: can't cast to pointer as int not of"
+                        ++ " pointer size!"
 
          False -> panic "exprToVar: CmmLoad expression is not of type int!"
 
