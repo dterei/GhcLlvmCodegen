@@ -74,7 +74,12 @@ basicBlockCodeGen env (BasicBlock id stmts)
 -- CmmStmt code generation
 --
 
+-- A statement conversion retrun.
+--   * LlvmEnv: The new enviornment
+--   * LlvmStatement: The compiled llvm statements.
+--   * LlvmCmmTop: Any global data needed.
 type StmtData = (LlvmEnv, [LlvmStatement], [LlvmCmmTop])
+
 
 -- | Convert a list of CmmStmt's to LlvmStatement's
 stmtsToInstrs :: LlvmEnv -> [CmmStmt] -> ([LlvmStatement], [LlvmCmmTop])
@@ -407,18 +412,20 @@ genSwitch env cond maybe_ids = do
 -- CmmExpr code generation
 --
 
-
 -- An expression conversion return.
 --   * LlvmEnv: The new enviornment
 --   * LlvmVar: The var holding the result of the expression
 --   * LlvmStatements: Any statements needed to evaluate the expression
---   * [LlvmCmmTop]: Any global data needed for this expression
+--   * LlvmCmmTop: Any global data needed for this expression
 type ExprData = (LlvmEnv, LlvmVar, LlvmStatements, [LlvmCmmTop])
 
 -- | Values which can be passed to 'exprToVar' to configure its
 -- behaviour in certain circumstances.
 data EOption = EOption {
         -- | The expected LlvmType for the returned variable.
+        --
+        -- Currently just used for determining if a comparison should return
+        -- a boolean (i1) or a int (i32/i64).
         eoExpectedType :: Maybe LlvmType
   }
 
@@ -430,6 +437,7 @@ wordOption = EOption (Just llvmWord)
 
 emptyEOption :: EOption
 emptyEOption = EOption Nothing
+
 
 -- | Convert a CmmExpr to a list of LlvmStatements with the result of the
 --   expression being stored in the returned LlvmVar.
