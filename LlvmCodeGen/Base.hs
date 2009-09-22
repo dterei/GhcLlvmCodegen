@@ -27,7 +27,7 @@ import Cmm
 import CmmExpr
 import DynFlags
 import ErrUtils
-import Outputable ( ppr, showSDocOneLine )
+import Outputable ( ppr )
 import qualified Outputable
 import Pretty
 import Unique

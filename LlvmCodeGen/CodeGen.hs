@@ -11,11 +11,12 @@ import LlvmCodeGen.Base
 import BlockId
 import CLabel
 import Cmm
+import qualified PprCmm
 
 import BasicTypes
 import FastString
 import ForeignCall
-import Outputable ( ppr )
+import Outputable ( ppr , showSDocOneLine )
 import qualified Outputable
 import UniqSupply
 import Unique
@@ -93,8 +94,8 @@ stmtToInstrs :: LlvmEnv -> CmmStmt
 stmtToInstrs env stmt = case stmt of
 
     CmmNop               -> return (env, [], [])
-    CmmComment s         -> return (env, [], []) -- nuke comments
---  CmmComment s         -> return (env, [Comment [(unpackFS s)]], [])
+--  CmmComment s         -> return (env, [], []) -- nuke comments
+    CmmComment s         -> return (env, [Comment (lines $ unpackFS s)], [])
 
     CmmAssign reg src    -> genAssign env reg src
     CmmStore addr src    -> genStore env addr src
@@ -372,7 +373,7 @@ genCondBranch env cond idT = do
     idF <- mkUniqStr
     let labelT = blockIdToLlvm idT
     let labelF = LMLocalVar idF LMLabel
-    (env', vc, stmts, top) <- exprToVar env cond
+    (env', vc, stmts, top) <- exprToVarOpt env i1Option cond
     if getVarType vc == i1
         then do
             let stmt1 = BranchIf vc labelT labelF
@@ -414,11 +415,29 @@ genSwitch env cond maybe_ids = do
 --   * [LlvmCmmTop]: Any global data needed for this expression
 type ExprData = (LlvmEnv, LlvmVar, LlvmStatements, [LlvmCmmTop])
 
+-- | Values which can be passed to 'exprToVar' to configure its
+-- behaviour in certain circumstances.
+data EOption = EOption {
+        -- | The expected LlvmType for the returned variable.
+        eoExpectedType :: Maybe LlvmType
+  }
+
+i1Option :: EOption
+i1Option = EOption (Just i1)
+
+wordOption :: EOption
+wordOption = EOption (Just llvmWord)
+
+emptyEOption :: EOption
+emptyEOption = EOption Nothing
 
 -- | Convert a CmmExpr to a list of LlvmStatements with the result of the
 --   expression being stored in the returned LlvmVar.
 exprToVar :: LlvmEnv -> CmmExpr -> UniqSM ExprData
-exprToVar env e = case e of
+exprToVar env = exprToVarOpt env wordOption
+
+exprToVarOpt :: LlvmEnv -> EOption -> CmmExpr -> UniqSM ExprData
+exprToVarOpt env opt e = case e of
 
     CmmLit lit
         -> genLit env lit 
@@ -435,7 +454,7 @@ exprToVar env e = case e of
         return (env', v1, stmts ++ [s1], top)
     
     CmmMachOp op exprs
-        -> genMachOp env op exprs
+        -> genMachOp env opt op exprs
     
     CmmRegOff r i
         -> exprToVar env $ expandCmmReg (r, i)
@@ -445,10 +464,10 @@ exprToVar env e = case e of
 
 
 -- | Handle CmmMachOp expressions
-genMachOp :: LlvmEnv -> MachOp -> [CmmExpr] -> UniqSM ExprData
+genMachOp :: LlvmEnv -> EOption -> MachOp -> [CmmExpr] -> UniqSM ExprData
 
 -- Unary Machop
-genMachOp env op [x] = case op of
+genMachOp env _ op [x] = case op of
 
     MO_Not w -> 
         let all1 = mkIntLit (-1) (widthToLlvmInt w)
@@ -502,20 +521,20 @@ genMachOp env op [x] = case op of
 
 
 -- Binary MachOp
-genMachOp env op [x, y] = case op of
+genMachOp env opt op [x, y] = case op of
 
-    MO_Eq _   -> genBinComp LM_CMP_Eq
-    MO_Ne _   -> genBinComp LM_CMP_Ne
+    MO_Eq _   -> genBinComp opt LM_CMP_Eq
+    MO_Ne _   -> genBinComp opt LM_CMP_Ne
 
-    MO_S_Gt _ -> genBinComp LM_CMP_Sgt
-    MO_S_Ge _ -> genBinComp LM_CMP_Sge
-    MO_S_Lt _ -> genBinComp LM_CMP_Slt
-    MO_S_Le _ -> genBinComp LM_CMP_Sle
+    MO_S_Gt _ -> genBinComp opt LM_CMP_Sgt
+    MO_S_Ge _ -> genBinComp opt LM_CMP_Sge
+    MO_S_Lt _ -> genBinComp opt LM_CMP_Slt
+    MO_S_Le _ -> genBinComp opt LM_CMP_Sle
 
-    MO_U_Gt _ -> genBinComp LM_CMP_Ugt
-    MO_U_Ge _ -> genBinComp LM_CMP_Uge
-    MO_U_Lt _ -> genBinComp LM_CMP_Ult
-    MO_U_Le _ -> genBinComp LM_CMP_Ule
+    MO_U_Gt _ -> genBinComp opt LM_CMP_Ugt
+    MO_U_Ge _ -> genBinComp opt LM_CMP_Uge
+    MO_U_Lt _ -> genBinComp opt LM_CMP_Ult
+    MO_U_Le _ -> genBinComp opt LM_CMP_Ule
 
     MO_Add _ -> genBinMach LM_MO_Add
     MO_Sub _ -> genBinMach LM_MO_Sub
@@ -531,12 +550,12 @@ genMachOp env op [x, y] = case op of
     MO_U_Quot _ -> genBinMach LM_MO_UDiv
     MO_U_Rem  _ -> genBinMach LM_MO_URem
 
-    MO_F_Eq _ -> genBinComp LM_CMP_Feq
-    MO_F_Ne _ -> genBinComp LM_CMP_Fne
-    MO_F_Gt _ -> genBinComp LM_CMP_Fgt
-    MO_F_Ge _ -> genBinComp LM_CMP_Fge
-    MO_F_Lt _ -> genBinComp LM_CMP_Flt
-    MO_F_Le _ -> genBinComp LM_CMP_Fle
+    MO_F_Eq _ -> genBinComp opt LM_CMP_Feq
+    MO_F_Ne _ -> genBinComp opt LM_CMP_Fne
+    MO_F_Gt _ -> genBinComp opt LM_CMP_Fgt
+    MO_F_Ge _ -> genBinComp opt LM_CMP_Fge
+    MO_F_Lt _ -> genBinComp opt LM_CMP_Flt
+    MO_F_Le _ -> genBinComp opt LM_CMP_Fle
 
     MO_F_Add  _ -> genBinMach LM_MO_FAdd
     MO_F_Sub  _ -> genBinMach LM_MO_FSub
@@ -561,11 +580,42 @@ genMachOp env op [x, y] = case op of
                     tmp1 <- mkLocalVar $ ty vx
                     let stmt1 = Assignment tmp1 $ binOp vx vy
                     return (env2, tmp1, stmts1 ++ stmts2 ++ [stmt1], top1 ++ top2)
-                else
-                    panic $ "genMachOp: comparison between different types! ("
-                            ++ show vx ++ ", " ++ show vy ++ ")" 
+                else do
+                    -- Error, but do anyway for debugging
+                    let d1 = commentExpr x
+                    let d2 = commentExpr y
+                    v1 <- mkLocalVar $ ty vx
+                    let s1 = Assignment v1 $ binOp vx vy
+                    return (env2, v1, [d1] ++ stmts1 ++ [d2] ++ stmts2 ++ [s1], top1 ++ top2)
+                    -- panic $ "genMachOp: comparison between different types! ("
+                    --         ++ show vx ++ ", " ++ show vy ++ ")" 
 
-        genBinComp cmp = binLlvmOp (\x -> i1) $ Compare cmp
+        -- | Need to use EOption here as Cmm expects word size results from
+        -- comparisons while llvm return i1. Need to extend to llvmWord type
+        -- if expected
+        genBinComp opt cmp = do
+            ed@(env', v1, stmts, top) <- binLlvmOp (\x -> i1) $ Compare cmp
+
+            if getVarType v1 == i1
+                then
+                    case eoExpectedType opt of
+                         Nothing ->
+                             return ed
+
+                         Just t | t == i1 ->
+                                    return ed
+
+                                | isInt t -> do
+                                    v2 <- mkLocalVar t
+                                    let s1 = Assignment v2 $ Cast LM_Zext v1 t
+                                    return (env', v2, stmts ++ [s1], top)
+
+                                | otherwise ->
+                                    panic $ "genBinComp: Can't case i1 compare"
+                                        ++ "res to non int type " ++ show (t)
+                else
+                    panic $ "genBinComp: Compare returned type other then i1! "
+                        ++ (show $ getVarType v1)
         
         genBinMach op = binLlvmOp getVarType (LlvmOp op)
 
@@ -611,7 +661,7 @@ genMachOp env op [x, y] = case op of
 
 
 -- More then two expression, invalid!
-genMachOp _ _ _ = panic "genMachOp: More then 2 expressions in MachOp!"
+genMachOp _ _ _ _ = panic "genMachOp: More then 2 expressions in MachOp!"
 
 
 -- | Handle CmmLoad expression
@@ -628,9 +678,18 @@ genCmmLoad env e ty = do
                     let load = Assignment dvar $ Load ptr
                     return (env', dvar, stmts ++ [cast, load], tops)
 
-              | otherwise
-                -> panic $ "exprToVar: can't cast to pointer as int not of"
-                        ++ " pointer size!"
+              | otherwise ->  do
+                    let d1 = Comment [(showSDocOneLine $ PprCmm.pprExpr e)]
+                    let pty = LMPointer $ cmmToLlvmType ty
+                    ptr <- mkLocalVar pty
+                    let cast = Assignment ptr $ Cast LM_Inttoptr iptr pty
+                    dvar <- mkLocalVar $ cmmToLlvmType ty
+                    let load = Assignment dvar $ Load ptr
+                    return (env', dvar, [d1] ++ stmts ++ [cast, load], tops)
+
+              -- | otherwise
+              --   -> panic $ "exprToVar: can't cast to pointer as int not of"
+              --           ++ " pointer size!"
 
          False -> panic "exprToVar: CmmLoad expression is not of type int!"
 
@@ -812,4 +871,7 @@ mkIntLit i ty = LMLitVar $ LMIntLit (toInteger i) ty
 -- | error function
 panic :: String -> a
 panic s = Outputable.panic $ "LlvmCodeGen.CodeGen." ++ s
+
+commentExpr :: CmmExpr -> LlvmStatement
+commentExpr e = Comment $ (lines . showSDocOneLine . PprCmm.pprExpr) e
 
