@@ -160,7 +160,7 @@ cmmLlvmGen dflags h us env cmm count
     -- generate native code from cmm
     let ((env', llvmBC), usGen) = initUs usFix $ genLlvmCode dflags env opt_cmm
 
-    dumpIfSet_dyn dflags Opt_D_dump_llvm_opt "LLVM code"
+    dumpIfSet_dyn dflags Opt_D_dump_llvm "LLVM code"
         (vcat $ map (docToSDoc . pprLlvmCmmTop dflags) llvmBC)
 
     return (usGen, env', llvmBC)
