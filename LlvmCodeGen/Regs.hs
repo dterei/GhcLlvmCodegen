@@ -24,5 +24,5 @@ get_GlobalReg_addr mid
   = let expr = CgUtils.get_GlobalReg_addr mid
     in case expr of
             CmmLit _  -> Right expr
-            otherwise -> Left  expr
+            _         -> Left  expr
 

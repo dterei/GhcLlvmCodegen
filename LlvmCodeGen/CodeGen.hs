@@ -11,12 +11,11 @@ import LlvmCodeGen.Base
 import BlockId
 import CLabel
 import Cmm
-import qualified PprCmm
 
 import BasicTypes
 import FastString
 import ForeignCall
-import Outputable ( ppr , showSDocOneLine )
+import Outputable ( ppr )
 import qualified Outputable
 import UniqSupply
 import Unique
@@ -99,7 +98,7 @@ stmtToInstrs :: LlvmEnv -> CmmStmt
 stmtToInstrs env stmt = case stmt of
 
     CmmNop               -> return (env, [], [])
-    CmmComment s         -> return (env, [], []) -- nuke comments
+    CmmComment _         -> return (env, [], []) -- nuke comments
 --  CmmComment s         -> return (env, [Comment (lines $ unpackFS s)], [])
 
     CmmAssign reg src    -> genAssign env reg src
@@ -135,7 +134,7 @@ genCall env target res args ret = do
 
     -- ret type
     let ret_type ([]) = LMVoid
-        ret_type ([CmmHinted reg AddrHint]) = pLift i8
+        ret_type ([CmmHinted _ AddrHint]) = pLift i8
         ret_type ([CmmHinted reg _])        = cmmToLlvmType $ localRegType reg
         ret_type t = panic $ "genCall: Too many return values! Can only handle"
                         ++ " 0 or 1, given " ++ show (length t) ++ "."
@@ -144,14 +143,33 @@ genCall env target res args ret = do
     let callType CmmMayReturn    = StdCall
         callType CmmNeverReturns = TailCall
 
+    -- extract call convention
+    let conv = case target of
+            CmmCallee _ conv -> conv
+            CmmPrim   _      -> PrimCallConv
+
+    -- get llvm call convention
+    let lmconv = case conv of
+            CCallConv    -> CC_Ccc
+            -- TODO: This is x86 specific and has a better llvm binding
+            StdCallConv  -> CC_Ccc
+            CmmCallConv  -> CC_Fastcc
+            PrimCallConv -> CC_Ccc
+
+    -- fun types
     let ccTy  = callType ret
     let argTy = map arg_type args
     let retTy = ret_type res
     let funTy name = LMFunction $
-            LlvmFunctionDecl name ExternallyVisible CC_Ccc retTy FixedArgs argTy
+            LlvmFunctionDecl name ExternallyVisible lmconv retTy FixedArgs argTy
 
     -- get paramter values
     (env1, argVars, stmts1, top1) <- arg_vars env args ([], [], [])
+
+    -- get the return register
+    let ret_reg ([CmmHinted reg hint]) = (reg, hint)
+        ret_reg t = panic $ "genCall: Bad number of registers! Can only handle"
+                        ++ " 1, given " ++ show (length t) ++ "."
 
 	-- deal with call types
     let getFunPtr :: CmmCallTarget -> UniqSM ExprData
@@ -164,7 +182,7 @@ genCall env target res args ret = do
                         let fun = LMGlobalVar name ty' (funcLinkage sig)
                         return (env1, fun, [], [])
 
-                    Just ty' -> do
+                    Just _ -> do
                         -- label in module but not function pointer, convert
                         let fty@(LMFunction sig) = funTy name
                         let fun = LMGlobalVar name fty (funcLinkage sig)
@@ -182,7 +200,7 @@ genCall env target res args ret = do
 
             CmmCallee expr _ -> do
                 (env', v1, stmts, top) <- exprToVar env1 expr
-                let fty@(LMFunction sig) = funTy "dynamic"
+                let fty = funTy "dynamic"
                 let cast = case getVarType v1 of
                      ty | isPointer ty -> LM_Bitcast
                      ty | isInt ty     -> LM_Inttoptr
@@ -201,24 +219,6 @@ genCall env target res args ret = do
     
     (env2, fptr, stmts2, top2) <- getFunPtr target
 
-    -- extract call convention
-    let conv = case target of
-            CmmCallee _ conv -> conv
-            CmmPrim   _      -> PrimCallConv
-
-    -- get llvm call convention
-    let lmconv = case conv of
-            CCallConv    -> CC_Ccc
-            -- TODO: This is x86 specific and has a better llvm binding
-            StdCallConv  -> CC_Ccc
-            CmmCallConv  -> CC_Fastcc
-            PrimCallConv -> CC_Ccc
-
-    -- get the return register
-    let ret_reg ([CmmHinted reg hint]) = (reg, hint)
-        ret_reg t = panic $ "genCall: Bad number of registers! Can only handle"
-                        ++ " 1, given " ++ show (length t) ++ "."
-
     -- make the actual call
     case retTy of
         LMVoid -> do
@@ -226,7 +226,7 @@ genCall env target res args ret = do
             return (env2, stmts1 ++ stmts2 ++ [s1], top1 ++ top2)
 
         _ -> do
-            let (creg, hint) = ret_reg res
+            let (creg, _) = ret_reg res
             v1 <- mkLocalVar retTy
             let s1 = Assignment v1 $ Call ccTy fptr argVars
             let (env3, vreg, stmts3, top3) = genCmmReg env2 (CmmLocal creg)
@@ -435,9 +435,6 @@ i1Option = EOption (Just i1)
 wordOption :: EOption
 wordOption = EOption (Just llvmWord)
 
-emptyEOption :: EOption
-emptyEOption = EOption Nothing
-
 
 -- | Convert a CmmExpr to a list of LlvmStatements with the result of the
 --   expression being stored in the returned LlvmVar.
@@ -548,7 +545,7 @@ genMachOp env opt op [x, y] = case op of
     MO_Sub _ -> genBinMach LM_MO_Sub
     MO_Mul _ -> genBinMach LM_MO_Mul
 
-    MO_U_MulMayOflo w -> panic "genMachOp: MO_U_MulMayOflo unsupported!"
+    MO_U_MulMayOflo _ -> panic "genMachOp: MO_U_MulMayOflo unsupported!"
 
     MO_S_MulMayOflo w -> isSMulOK w x y
 
@@ -596,7 +593,7 @@ genMachOp env opt op [x, y] = case op of
         -- comparisons while llvm return i1. Need to extend to llvmWord type
         -- if expected
         genBinComp opt cmp = do
-            ed@(env', v1, stmts, top) <- binLlvmOp (\x -> i1) $ Compare cmp
+            ed@(env', v1, stmts, top) <- binLlvmOp (\_ -> i1) $ Compare cmp
 
             if getVarType v1 == i1
                 then
@@ -626,7 +623,7 @@ genMachOp env opt op [x, y] = case op of
         --   implementation. Its much longer due to type information/safety.
         --   This should actually compile to only about 3 asm instructions.
         isSMulOK :: Width -> CmmExpr -> CmmExpr -> UniqSM ExprData
-        isSMulOK w x y = do
+        isSMulOK _ x y = do
             (env1, vx, stmts1, top1) <- exprToVar env x
             (env2, vy, stmts2, top2) <- exprToVar env1 y
 
@@ -694,7 +691,7 @@ genCmmLoad env e ty = do
 -- This is also the approach llvm-gcc takes for C variables. The LLVM optimiser
 -- can optimise this code to Phi form.
 genCmmReg :: LlvmEnv -> CmmReg -> ExprData
-genCmmReg env r@(CmmLocal (LocalReg un ty))
+genCmmReg env r@(CmmLocal (LocalReg un _))
   = let name = uniqToStr un
         oty  = Map.lookup name env
 
@@ -741,14 +738,14 @@ genLit env cmm@(CmmLabel l)
                 let glob@(var, _) = genStringLabelRef label
                 let ldata = [CmmData Data [([glob], [])]]
                 let env' = Map.insert label (pLower $ getVarType var) env
-                tmp1 <- mkLocalVar llvmWord
+                tmp1 <- mkLocalVar lmty
                 let stm1 = Assignment tmp1 $ Cast LM_Ptrtoint var llvmWord
                 return (env', tmp1, [stm1], ldata)
             -- Referenced data exists in this module, retrieve type and make
             -- pointer to it.
             Just ty' -> do
                 let var = LMGlobalVar label (LMPointer ty') ExternallyVisible
-                tmp1 <- mkLocalVar llvmWord
+                tmp1 <- mkLocalVar lmty
                 let stm1 = Assignment tmp1 $ Cast LM_Ptrtoint var llvmWord
                 return (env, tmp1, [stm1], [])
 
@@ -783,7 +780,7 @@ genLit env (CmmLabelDiffOff l1 l2 off) = do
 genLit env (CmmBlock b)
   = genLit env (CmmLabel $ infoTblLbl b)
 
-genLit env (CmmHighStackMark)
+genLit _ CmmHighStackMark
   = panic "genStaticLit - CmmHighStackMark unsupported!"
   
 
@@ -864,7 +861,4 @@ mkIntLit i ty = LMLitVar $ LMIntLit (toInteger i) ty
 -- | error function
 panic :: String -> a
 panic s = Outputable.panic $ "LlvmCodeGen.CodeGen." ++ s
-
-commentExpr :: CmmExpr -> LlvmStatement
-commentExpr e = Comment $ (lines . showSDocOneLine . PprCmm.pprExpr) e
 

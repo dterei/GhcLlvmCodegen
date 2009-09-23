@@ -16,9 +16,7 @@ import CLabel
 import Cmm
 
 import DynFlags
-import Outputable ( showSDocOneLine )
 import qualified Outputable
-import Pretty
 
 import qualified Data.Map as Map
 import Data.Maybe
@@ -123,7 +121,6 @@ resData env (Left (CmmLabelOff label off)) =
         offset = LMStaticLit $ LMIntLit (toInteger off) llvmWord
     in (env', LMAdd var offset, glob)
 
--- FIX: Check this actually works
 resData env (Left (CmmLabelDiffOff l1 l2 off)) =
     let (env1, var1, glob1) = resData env (Left (CmmLabel l1))
         (env2, var2, glob2) = resData env1 (Left (CmmLabel l2))
@@ -131,6 +128,7 @@ resData env (Left (CmmLabelDiffOff l1 l2 off)) =
         offset = LMStaticLit $ LMIntLit (toInteger off) llvmWord
     in (env2, LMAdd var offset, glob1 ++ glob2)
 
+resData _ _ = panic "resData: Non CLabel expr as left type!"
 
 -- ----------------------------------------------------------------------------
 -- Generate static data
@@ -149,10 +147,10 @@ genData (CmmUninitialised bytes)
 genData (CmmStaticLit lit)
     = genStaticLit lit
 
-genData (CmmAlign bytes)
+genData (CmmAlign _)
     = panic "genData: Can't handle CmmAlign!"
 
-genData (CmmDataLabel lbl)
+genData (CmmDataLabel _)
     = panic "genData: Can't handle data labels not at top of data!"
 
 

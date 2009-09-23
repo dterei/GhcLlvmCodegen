@@ -48,7 +48,6 @@ ppLlvmComment com = semi <+> (text com)
 
 
 ppLlvmGlobal :: LMGlobal -> Doc
-
 ppLlvmGlobal (var@(LMGlobalVar _ _ _), Nothing) =
   (text $ getName var) <+> (equals <+> (text $ show $ getLink var)
       <+> text "global") <+> (text $ show (pLower $ getVarType var))
@@ -57,25 +56,31 @@ ppLlvmGlobal (var@(LMGlobalVar _ _ _), (Just stat)) =
   (text $ getName var) <+> (equals <+> (text $ show $ getLink var)
       <+> text "global") <+> (text $ show stat)
               
-ppLlvmGlobal oth = error ("Non Global var ppr as global!" ++ show oth)
+ppLlvmGlobal oth = error $ "Non Global var ppr as global! " ++ show oth
 
 ppLlvmGlobals :: [LMGlobal] -> Doc
 ppLlvmGlobals ls = vcat $ map ppLlvmGlobal ls
 
+
 ppLlvmConstants :: [LMConstant] -> Doc
 ppLlvmConstants cons = vcat $ map ppLlvmConstant cons
 
+-- TODO: Check ok
 ppLlvmConstant :: LMConstant -> Doc
 ppLlvmConstant (dst@(LMGlobalVar _ _ link),src) = 
-        ppAssignment dst (text ("internal constant") <+> text (show src))
+    ppAssignment dst $ text (show link) <+> text ("constant")
+        <+> text (show src)
+
+ppLlvmConstant c = error $ "Non global var as constant! " ++ show c
+
 
 ppLlvmFunctions :: LlvmFunctions -> Doc
 ppLlvmFunctions funcs = vcat $ map ppLlvmFunction funcs
 
 ppLlvmFunction :: LlvmFunction -> Doc
 ppLlvmFunction (LlvmFunction dec attrs body) =
-  let attrDoc = hcat $ intersperse space (map (text . show) attrs)
-  in (text "define") <+> (ppLlvmFuncDecSig dec)
+    let attrDoc = hcat $ intersperse space (map (text . show) attrs)
+    in (text "define") <+> (ppLlvmFuncDecSig dec)
         <+> attrDoc
         $+$ lbrace
         $+$ ppLlvmBlocks body
@@ -163,7 +168,7 @@ ppLlvmExpression expr
 ppCall :: LlvmCallType -> LlvmVar -> [LlvmVar]-> Doc
 ppCall ct fptr vals
     -- if pointer, unwrap
-    | (LMPointer x) <- getVarType fptr
+    | (LMPointer _) <- getVarType fptr
       = ppCall ct (pVarLower fptr) vals
 
     -- should be function type otherwise
@@ -274,9 +279,6 @@ ppSwitch scrut dflt targets =
 --------------------------------------------------------------------------------
 -- Misc functions
 --------------------------------------------------------------------------------
-ppPrependList :: String -> [Doc] -> Doc
-ppPrependList str docs = vcat $ map ((text str) <+>) docs
-
 atsym :: Doc
 atsym = text "@"
 

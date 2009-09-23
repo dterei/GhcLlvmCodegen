@@ -66,6 +66,8 @@ Todo
 
  - Rearrange some functions and files better.
 
+ - Use LMString in more places instead of String.
+
 BUGS
 ~~~~
 

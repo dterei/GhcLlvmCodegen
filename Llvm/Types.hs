@@ -170,7 +170,7 @@ instance Show LlvmLit where
 
 
 -- | Llvm Static data
---   This can be decalred in constants
+--   This can be declared in constants
 data LlvmStatic
   -- | A comment in a static section
   = LMComment String
@@ -185,7 +185,8 @@ data LlvmStatic
   -- pointer to other data
   | LMStaticPointer LlvmVar
   
-  -- static expressions
+  -- static expressions, could split out but leave
+  -- for moment for ease of use. Not many of them.
   
   -- pointer to int
   | LMPtoI LlvmStatic LlvmType
@@ -271,7 +272,7 @@ instance Show LlvmType where
   show (LMFunction (LlvmFunctionDecl _ _ _ r FixedArgs p))
         = (show r) ++ " (" ++ (commaCat p) ++ ")"
 
-  show (LMAlias s t   ) = "%" ++ s
+  show (LMAlias s _   ) = "%" ++ s
 
 commaCat :: Show a => [a] -> String
 commaCat [] = ""
@@ -317,7 +318,7 @@ getLitType :: LlvmLit -> LlvmType
 getLitType (LMIntLit   _ t) = t
 getLitType (LMFloatLit _ t) = t
 
--- | Return the 'LlvmType' of the 'LlvmVar'
+-- | Return the 'LlvmType' of the 'LlvmStatic'
 getStatType :: LlvmStatic -> LlvmType
 getStatType (LMStaticLit   l  ) = getLitType l
 getStatType (LMUninitType    t) = t
@@ -325,6 +326,9 @@ getStatType (LMString      _ t) = t
 getStatType (LMStaticStruc _ t) = t
 getStatType (LMStaticPointer v) = getVarType v
 getStatType (LMPtoI        _ t) = t
+getStatType (LMAdd         t _) = getStatType t
+getStatType (LMSub         t _) = getStatType t
+getStatType (LMComment       _) = error "Can't call getStatType on LMComment!"
 
 -- | Return the 'LlvmType' of the 'LMGlobal'
 getGlobalType :: LMGlobal -> LlvmType
@@ -645,6 +649,7 @@ instance Show LlvmFuncAttr where
   show ReadOnly        = "readonly"
   show Ssp             = "ssp"
   show SspReq          = "ssqreq"
+  show NoRedZone       = "noredzone"
   show NoImplicitFloat = "noimplicitfloat"
   show Naked           = "naked"
 

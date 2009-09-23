@@ -16,8 +16,6 @@ import LlvmCodeGen.Data
 import CLabel
 import Cmm
 import DynFlags
-import Outputable ( showSDocOneLine )
-import qualified Outputable
 import Pretty
 
 import qualified Data.Map as Map
@@ -36,7 +34,7 @@ pprLlvmCmmTop :: DynFlags -> LlvmCmmTop -> Doc
 pprLlvmCmmTop dflags (CmmData _ lmdata)
   = vcat $ map (pprLlvmData dflags) lmdata
 
-pprLlvmCmmTop dflags p@(CmmProc info lbl params (ListGraph blocks))
+pprLlvmCmmTop dflags (CmmProc info lbl _ (ListGraph blocks))
   = (
         let static = CmmDataLabel (entryLblToInfoLbl lbl) : info
         in if not (null info)
@@ -51,10 +49,6 @@ pprLlvmCmmTop dflags p@(CmmProc info lbl params (ListGraph blocks))
         in ppLlvmFunction fun
     )
 
-pprLlvmCmmTop _ _
-  = Outputable.pprTrace "LlvmCodeGen.Ppr.pprLlvmCmmTop not implemented!"
-          Outputable.empty empty
-
 
 -- | Pretty print LLVM data code
 pprLlvmData :: DynFlags -> LlvmData -> Doc
@@ -68,6 +62,6 @@ pprLlvmData _ (globals, types ) =
 pprCmmStatic :: DynFlags -> [CmmStatic] -> Doc
 pprCmmStatic dflags stat
   = let unres = genLlvmData dflags (Data,stat)
-        (env', ldata) = resolveLlvmData dflags Map.empty unres
+        (_, ldata) = resolveLlvmData dflags Map.empty unres
     in pprLlvmData dflags ldata
 

@@ -25,8 +25,6 @@ import BlockId
 import CLabel
 import Cmm
 import CmmExpr
-import DynFlags
-import ErrUtils
 import Outputable ( ppr )
 import qualified Outputable
 import Pretty
