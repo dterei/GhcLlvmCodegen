@@ -54,7 +54,6 @@ data LlvmMachOp
   | LM_MO_Sub
   | LM_MO_FSub
   | LM_MO_Mul
-  | LM_MO_FMul
   | LM_MO_UDiv -- unsigned integer or vector division.
   | LM_MO_SDiv -- signed integer ..
   | LM_MO_FDiv -- floating point ..
@@ -82,7 +81,6 @@ instance Show LlvmMachOp where
   show LM_MO_Sub  = "sub"
   show LM_MO_FSub = "fsub"
   show LM_MO_Mul  = "mul"
-  show LM_MO_FMul = "fmul"
   show LM_MO_UDiv = "udiv"
   show LM_MO_SDiv = "sdiv"
   show LM_MO_FDiv = "fdiv"

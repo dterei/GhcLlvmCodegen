@@ -601,7 +601,7 @@ genMachOp env opt op [x, y] = case op of
 
     MO_F_Add  _ -> genBinMach LM_MO_FAdd
     MO_F_Sub  _ -> genBinMach LM_MO_FSub
-    MO_F_Mul  _ -> genBinMach LM_MO_FMul
+    MO_F_Mul  _ -> genBinMach LM_MO_Mul
     MO_F_Quot _ -> genBinMach LM_MO_FDiv
 
     MO_And _   -> genBinMach LM_MO_And
