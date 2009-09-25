@@ -159,15 +159,7 @@ data LlvmLit
   deriving (Eq)
 
 instance Show LlvmLit where
-  show (LMIntLit i t) = show t ++ " " ++ show i
-  -- BUG: This isn't valid LLVM. Will fail in compile
-  show (LMFloatLit r t)
-      = show t ++ " " ++ str
-        where d = fromRational r :: Double
-              str | isInfinite d && d < 0 = "-INFINITY"
-                  | isInfinite d          = "INFINITY"
-                  | isNaN d               = "NAN"
-                  | otherwise             = show d
+  show l = show (getLitType l) ++ " " ++ getLit l
 
 
 -- | Llvm Static data
@@ -294,7 +286,14 @@ getName (LMLitVar x)         = getLit x
 -- | Print a literal value. No type.
 getLit :: LlvmLit -> String
 getLit (LMIntLit i _)   = show i
-getLit (LMFloatLit f _) = show f
+getLit (LMFloatLit r _) =
+    let d = fromRational r :: Double
+        -- BUG: INFIN.. aren't valid LLVM values, will cause compile error
+        str | isInfinite d && d < 0 = "-INFINITY"
+            | isInfinite d          = "INFINITY"
+            | isNaN d               = "NAN"
+            | otherwise             = show d
+    in str
 
 -- | Return the variable name or value of the 'LlvmVar'
 --   in a plain textual representation (e.g. @x@, @y@ or @42@).
