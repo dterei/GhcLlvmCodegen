@@ -159,7 +159,7 @@ data LlvmLit
 
 instance Show LlvmLit where
   show (LMIntLit i t) = show t ++ " " ++ show i
-  -- FIX: Make sure NAN, INFINITY.. are OK in LLVM.
+  -- BUG: This isn't valid LLVM. Will fail in compile
   show (LMFloatLit r t)
       = show t ++ " " ++ str
         where d = fromRational r :: Double
