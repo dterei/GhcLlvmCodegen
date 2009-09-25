@@ -137,9 +137,9 @@ type LMString   = String
 -- | Llvm variables
 data LlvmVar
   -- references to variables with a global scope.
-  = LMGlobalVar String LlvmType LlvmLinkageType
+  = LMGlobalVar LMString LlvmType LlvmLinkageType
   -- references to variables local for a function or parameters.
-  | LMLocalVar  String LlvmType
+  | LMLocalVar  LMString LlvmType
   -- a constant variable
   | LMLitVar  LlvmLit
   deriving (Eq)
@@ -173,13 +173,13 @@ instance Show LlvmLit where
 --   This can be declared in constants
 data LlvmStatic
   -- | A comment in a static section
-  = LMComment String
+  = LMComment LMString
   -- | A static variant of a literal value
   | LMStaticLit LlvmLit
   -- | For uninitialised data
   | LMUninitType LlvmType
-  -- defines a static string
-  | LMString String LlvmType
+  -- defines a static LMString
+  | LMStatStr LMString LlvmType
   -- structure type
   | LMStaticStruc [LlvmStatic] LlvmType
   -- pointer to other data
@@ -200,7 +200,7 @@ instance Show LlvmStatic where
   show (LMComment       s) = "; " ++ s
   show (LMStaticLit   l  ) = show l
   show (LMUninitType    t) = show t ++ " undef"
-  show (LMString      s t) = show t ++ " c\"" ++ s ++ "\\00\""
+  show (LMStatStr     s t) = show t ++ " c\"" ++ s ++ "\\00\""
 
   show (LMStaticStruc d t)
       = let struc = case d of
@@ -252,7 +252,7 @@ data LlvmType
   -- function type, used to create pointers to functions
   | LMFunction LlvmFunctionDecl
   -- a type alias
-  | LMAlias String LlvmType
+  | LMAlias LMString LlvmType
   deriving (Eq)
 
 instance Show LlvmType where
@@ -322,7 +322,7 @@ getLitType (LMFloatLit _ t) = t
 getStatType :: LlvmStatic -> LlvmType
 getStatType (LMStaticLit   l  ) = getLitType l
 getStatType (LMUninitType    t) = t
-getStatType (LMString      _ t) = t
+getStatType (LMStatStr     _ t) = t
 getStatType (LMStaticStruc _ t) = t
 getStatType (LMStaticPointer v) = getVarType v
 getStatType (LMPtoI        _ t) = t
@@ -424,7 +424,7 @@ llvmWidthInBits (LMAlias _ t)    = llvmWidthInBits t
 --    * varargs:    ParameterListType indicating if this function uses varargs
 --    * params:     Signature of the parameters 
 data LlvmFunctionDecl = LlvmFunctionDecl {
-        decName       :: String,
+        decName       :: LMString,
         funcLinkage   :: LlvmLinkageType,
         funcCc        :: LlvmCallConvention,
         decReturnType :: LlvmType,
@@ -485,13 +485,17 @@ data LlvmCallConvention
   --   target-specific calling conventions to be used. Target specific calling
   --   conventions start at 64.
   | CC_Ncc Int  
+  -- | X86 Specific 'StdCall' convention. LLVM includes a specific alias for it
+  -- rather than just using CC_Ncc.
+  | CC_X86_Stdcc 
   deriving (Eq)
 
 instance Show LlvmCallConvention where
-  show CC_Ccc     = "ccc"
-  show CC_Fastcc  = "fastcc"
-  show CC_Coldcc  = "coldcc"
-  show (CC_Ncc i) = "cc " ++ (show i)
+  show CC_Ccc       = "ccc"
+  show CC_Fastcc    = "fastcc"
+  show CC_Coldcc    = "coldcc"
+  show (CC_Ncc i)   = "cc " ++ (show i)
+  show CC_X86_Stdcc = "x86_stdcallcc"
 
 
 -- | Functions can have a fixed amount of parameters, or a variable amount.

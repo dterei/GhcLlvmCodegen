@@ -50,7 +50,7 @@ type LlvmData = ([LMGlobal], [LlvmType])
 type UnresLabel = CmmLit
 type UnresStatic = Either UnresLabel LlvmStatic
 
-type LlvmEnv = Map.Map String LlvmType
+type LlvmEnv = Map.Map LMString LlvmType
 
 -- ----------------------------------------------------------------------------
 -- Type translations
@@ -59,7 +59,7 @@ type LlvmEnv = Map.Map String LlvmType
 -- | Translate a basic CmmType to an LlvmType.
 cmmToLlvmType :: CmmType -> LlvmType
 cmmToLlvmType ty | isFloatType ty = widthToLlvmFloat $ typeWidth ty
-               | otherwise      = widthToLlvmInt   $ typeWidth ty
+                 | otherwise      = widthToLlvmInt   $ typeWidth ty
 
 -- | Translate a Cmm Float Width to a LlvmType.
 widthToLlvmFloat :: Width -> LlvmType
@@ -106,10 +106,10 @@ initLlvmEnv
 --
 
 -- | Print strings as valid C strings
-genLlvmStr :: [Word8] -> String
+genLlvmStr :: [Word8] -> LMString
 genLlvmStr s = concatMap genLlvmStr' s
 
-genLlvmStr' :: Word8 -> String
+genLlvmStr' :: Word8 -> LMString
 genLlvmStr' w =
     let conv c | isLlvmOk c = [c]
                | otherwise  = hex w
@@ -137,11 +137,11 @@ mainCapability :: LMGlobal
 mainCapability = genCmmLabelRef mkMainCapabilityLabel
 
 -- | Pretty Print a BlockId
-strBlockId_llvm :: BlockId -> String
+strBlockId_llvm :: BlockId -> LMString
 strBlockId_llvm b = (show . llvmSDoc . ppr . getUnique) b
 
 -- | Pretty print a CLabel
-strCLabel_llvm :: CLabel -> String
+strCLabel_llvm :: CLabel -> LMString
 strCLabel_llvm l = show $ llvmSDoc (pprCLabel l)
 
 -- | Create an external defenition for a CLabel that is defined in another module.
@@ -150,8 +150,8 @@ genCmmLabelRef cl =
     let mcl = strCLabel_llvm cl
     in (LMGlobalVar mcl (LMPointer (LMArray 0 llvmWord)) External, Nothing)
 
--- | As above ('genCmmLabelRef') but taking a String, not CLabel.
-genStringLabelRef :: String -> LMGlobal
+-- | As above ('genCmmLabelRef') but taking a LMString, not CLabel.
+genStringLabelRef :: LMString -> LMGlobal
 genStringLabelRef cl =
     (LMGlobalVar cl (LMPointer (LMArray 0 llvmWord)) External, Nothing)
 

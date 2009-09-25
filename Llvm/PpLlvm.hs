@@ -65,7 +65,6 @@ ppLlvmGlobals ls = vcat $ map ppLlvmGlobal ls
 ppLlvmConstants :: [LMConstant] -> Doc
 ppLlvmConstants cons = vcat $ map ppLlvmConstant cons
 
--- TODO: Check ok
 ppLlvmConstant :: LMConstant -> Doc
 ppLlvmConstant (dst@(LMGlobalVar _ _ link),src) = 
     ppAssignment dst $ text (show link) <+> text ("constant")

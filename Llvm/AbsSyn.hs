@@ -5,7 +5,7 @@ module Llvm.AbsSyn where
 import Llvm.Types
 
 -- | Block labels
-type LlvmBlockId = String
+type LlvmBlockId = LMString
 
 -- | Blocks consist of
 --     * label: The code label for this block
@@ -77,14 +77,14 @@ data LlvmStatement
     Comment
     Plain comment.
   -}               
-  | Comment [String]
+  | Comment [LMString]
   
   {-
     Label
     Set a label on this position.
       * name: Identifier of this label, unique for this module
   -}     
-  | MkLabel String
+  | MkLabel LMString
   
   {- 
     Store

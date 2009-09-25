@@ -26,7 +26,7 @@ import Data.Maybe
 -- Constants
 --
 
-structStr :: String
+structStr :: LMString
 structStr = "_struct"
 
 -- ----------------------------------------------------------------------------
@@ -139,7 +139,7 @@ resData _ _ = panic "resData: Non CLabel expr as left type!"
 genData :: CmmStatic -> UnresStatic
 
 genData (CmmString str)
-    = Right $ LMString (genLlvmStr str) (LMArray (1 + length str) i8)
+    = Right $ LMStatStr (genLlvmStr str) (LMArray (1 + length str) i8)
 
 genData (CmmUninitialised bytes)
     = Right $ LMUninitType (LMArray bytes i8)
@@ -169,7 +169,6 @@ genStaticLit c@(CmmLabel        _    ) = Left $ c
 genStaticLit c@(CmmLabelOff     _   _) = Left $ c
 genStaticLit c@(CmmLabelDiffOff _ _ _) = Left $ c
 
--- FIX: Check this actually works
 genStaticLit (CmmBlock b) = Left $ CmmLabel $ infoTblLbl b
 
 genStaticLit (CmmHighStackMark)
