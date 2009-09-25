@@ -1,7 +1,6 @@
 --------------------------------------------------------------------------------
--- Prettyprint a Llvm Module
---------------------------------------------------------------------------------
-
+-- Prettyprint an LLVM Module.
+--
 module Llvm.PpLlvm (
 
     ppLlvmModule,
@@ -25,6 +24,7 @@ module Llvm.PpLlvm (
 import Llvm.AbsSyn
 import Llvm.Types
 
+-- import Text.PrettyPrint.HughesPJ
 import Pretty
 import Data.List ( intersperse )
 
@@ -165,26 +165,26 @@ ppLlvmExpression expr
 -- FIX: Should always be a function pointer. So a global var of function type
 -- (since globals are always pointers) or a local var of pointer function type.
 ppCall :: LlvmCallType -> LlvmVar -> [LlvmVar]-> Doc
-ppCall ct fptr vals
+ppCall ct fptr vals = case getVarType fptr of
     -- if pointer, unwrap
-    | (LMPointer _) <- getVarType fptr
-      = ppCall ct (pVarLower fptr) vals
+    LMPointer _ ->
+        ppCall ct (pVarLower fptr) vals
 
     -- should be function type otherwise
-    | (LMFunction (LlvmFunctionDecl _ _ cc ret argTy params)) <- getVarType fptr
-      = let tail = if ct == TailCall then text "tail " else empty
+    LMFunction (LlvmFunctionDecl _ _ cc ret argTy params) ->
+        let tcall = if ct == TailCall then text "tail " else empty
             ppValues = ppCommaJoin vals
             ppArgTy = ppCommaJoin params <>
                        (case argTy of
                            VarArgs -> (text ", ...")
                            FixedArgs -> empty)
             fnty = space <> lparen <> ppArgTy <> rparen <> (text "*")
-        in  tail <> (text "call") <+> (text $ show cc) <+> (text $ show ret) <> fnty
-            <+> (text $ getName fptr) <> lparen <+> ppValues <+> rparen
+        in  tcall <> (text "call") <+> (text $ show cc) <+> (text $ show ret)
+                <> fnty <+> (text $ getName fptr) <> lparen <+> ppValues
+                <+> rparen
 
     -- not pointer or function, so error
-    | otherwise
-        = error "ppCall called with non LMFunction type!"
+    _ -> error "ppCall called with non LMFunction type!"
 
 
 ppMachOp :: LlvmMachOp -> LlvmVar -> LlvmVar -> Doc

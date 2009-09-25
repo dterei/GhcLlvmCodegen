@@ -1,4 +1,5 @@
--- | The various LLVM Types.
+--------------------------------------------------------------------------------
+-- The LLVM Type System.
 --
 module Llvm.Types where
 
@@ -205,9 +206,9 @@ instance Show LlvmStatic where
   show (LMStaticStruc d t)
       = let struc = case d of
               [] -> "{}"
-              t  -> "{" ++
-                      (show (head t) ++ concat (map (\x -> "," ++ show x)
-                          (tail t)))
+              ts -> "{" ++
+                      (show (head ts) ++ concat (map (\x -> "," ++ show x)
+                          (tail ts)))
                       ++ "}"
         in show t ++ " " ++ struc
 
@@ -276,7 +277,7 @@ instance Show LlvmType where
 
 commaCat :: Show a => [a] -> String
 commaCat [] = ""
-commaCat x  = show (head x) ++ (concat $ map (\x -> "," ++ show x) (tail x))
+commaCat x  = show (head x) ++ (concat $ map (\y -> "," ++ show y) (tail x))
 
 -- | Test if a 'LlvmVar' is global.
 isGlobal :: LlvmVar -> Bool

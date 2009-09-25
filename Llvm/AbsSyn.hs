@@ -1,3 +1,6 @@
+--------------------------------------------------------------------------------
+-- The LLVM abstract syntax.
+--
 module Llvm.AbsSyn where
 
 #include "HsVersions.h"
