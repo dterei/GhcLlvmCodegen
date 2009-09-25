@@ -230,10 +230,23 @@ genCall env target res args ret = do
             v1 <- mkLocalVar retTy
             let s1 = Assignment v1 $ Call ccTy fptr argVars
             let (env3, vreg, stmts3, top3) = genCmmReg env2 (CmmLocal creg)
-            -- TODO: May need a cast operation
-            let s2 = Store v1 vreg
-            return (env3, stmts1 ++ stmts2 ++ stmts3 ++ [s1,s2], top1 ++ top2 ++ top3)
+            if retTy == pLower (getVarType vreg)
+                then do
+                    let s2 = Store v1 vreg
+                    return (env3, stmts1 ++ stmts2 ++ stmts3 ++ [s1,s2],
+                            top1 ++ top2 ++ top3)
+                else do
+                    v2 <- mkLocalVar $ pLower (getVarType vreg)
+                    let op = case getVarType v2 of
+                            vt | isPointer vt -> LM_Bitcast
+                               | isInt     vt -> LM_Inttoptr
+                               | otherwise    -> panic "BAD!"
 
+                    let s2 = Assignment v2 $ Cast op v1 (getVarType v2)
+                    let s3 = Store v2 vreg
+                    return (env3, stmts1 ++ stmts2 ++ stmts3 ++ [s1,s2,s3],
+                            top1 ++ top2 ++ top3)
+                
 
 -- Conversion of call arguments.
 arg_vars :: LlvmEnv -> HintedCmmActuals -> ([LlvmVar], [LlvmStatement], [LlvmCmmTop])
@@ -475,11 +488,11 @@ genMachOp :: LlvmEnv -> EOption -> MachOp -> [CmmExpr] -> UniqSM ExprData
 genMachOp env _ op [x] = case op of
 
     MO_Not w -> 
-        let all1 = mkIntLit (-1) (widthToLlvmInt w)
+        let all1 = mkIntLit (-1::Int) (widthToLlvmInt w)
         in negate (widthToLlvmInt w) all1 LM_MO_Xor
 
     MO_S_Neg w ->
-        let all0 = mkIntLit 0 (widthToLlvmInt w)
+        let all0 = mkIntLit (0::Int) (widthToLlvmInt w)
         in negate (widthToLlvmInt w) all0 LM_MO_Sub
 
     MO_F_Neg w ->
