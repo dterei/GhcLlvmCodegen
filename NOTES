@@ -46,6 +46,8 @@ Todo
  
  - look into lto/gold.
 
+ - Look at merging some of code with NCG.
+
 BUGS
 ~~~~
 

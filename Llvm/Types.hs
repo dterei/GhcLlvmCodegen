@@ -1,6 +1,7 @@
 --------------------------------------------------------------------------------
 -- The LLVM Type System.
 --
+
 module Llvm.Types where
 
 #include "HsVersions.h"
@@ -57,7 +58,6 @@ instance Show LlvmCmpOp where
 data LlvmMachOp
   -- Following take two integer, floating point or vector values.
   = LM_MO_Add
-  | LM_MO_FAdd
   | LM_MO_Sub
   | LM_MO_FSub
   | LM_MO_Mul
@@ -84,7 +84,6 @@ data LlvmMachOp
 
 instance Show LlvmMachOp where
   show LM_MO_Add  = "add"
-  show LM_MO_FAdd = "fadd"
   show LM_MO_Sub  = "sub"
   show LM_MO_FSub = "fsub"
   show LM_MO_Mul  = "mul"
@@ -200,7 +199,7 @@ instance Show LlvmStatic where
   show (LMComment       s) = "; " ++ s
   show (LMStaticLit   l  ) = show l
   show (LMUninitType    t) = show t ++ " undef"
-  show (LMStaticStr     s t) = show t ++ " c\"" ++ s ++ "\\00\""
+  show (LMStaticStr   s t) = show t ++ " c\"" ++ s ++ "\\00\""
 
   show (LMStaticArray d t)
       = let struc = case d of
