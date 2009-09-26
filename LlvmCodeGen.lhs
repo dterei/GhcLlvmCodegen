@@ -28,8 +28,8 @@ import DynFlags
 import ErrUtils
 import FastString
 import Outputable
-import UniqSupply
 import qualified Pretty as Prt
+import UniqSupply
 
 import qualified Data.Map as Map
 import System.IO

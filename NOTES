@@ -8,9 +8,6 @@ Possible Problems
 
  - Can't seem to find any evidence of pointer tagging. Is it still used?
 
- - Check that the approach taken for CmmBlock and CmmLabelDiff off in CmmData
- sections is correct.
- 
  - Check the Integer to Int conversion is OK. Am I printing signed/unsigned
  correctly?
  
@@ -38,15 +35,22 @@ Todo
 
  - Llvm module fixed 32bit. Change to work with all word widths.
 
- - return pointer width in Llvm module
+ - Return pointer width in Llvm module.
 
  - Look at using LLVM intrinsic functions. There are a few math functions.
  Also, there is a smul_overflow detect function.
 
  - Rearrange some functions and files better.
 
+ - Add optimisation pass.
+ 
+ - look into lto/gold.
+
 BUGS
 ~~~~
+
+ - Only work on small-endian machines. Need to detect endianness somehow for
+ floating point literals.
 
  - Bug with lists of floats ([Float]). Think to do with incorrect size since
  a list of doubles works fine. See ghc bug $1852.
@@ -54,6 +58,4 @@ BUGS
 
  - Generate incorrect code for Happy generated hs files. Errors with an out of
  range problem.
-
- - Can't handle infin, -infin, and Nan floating point literals.
 

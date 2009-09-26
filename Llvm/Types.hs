@@ -5,6 +5,13 @@ module Llvm.Types where
 
 #include "HsVersions.h"
 
+import Control.Monad.ST
+import Data.Array.ST
+import Data.Char
+import Data.Word
+import Numeric
+
+
 -- | Llvm compare functions, parameter of the 'Expression_Compare' constructor 
 --   of type 'Expression'
 data LlvmCmpOp
@@ -169,11 +176,13 @@ data LlvmStatic
   | LMStaticLit LlvmLit
   -- | For uninitialised data
   | LMUninitType LlvmType
-  -- defines a static LMString
-  | LMStatStr LMString LlvmType
-  -- structure type
+  -- | Defines a static LMString
+  | LMStaticStr LMString LlvmType
+  -- | A static array
+  | LMStaticArray [LlvmStatic] LlvmType
+  -- | A static structure type
   | LMStaticStruc [LlvmStatic] LlvmType
-  -- pointer to other data
+  -- | A pointer to other data
   | LMStaticPointer LlvmVar
   
   -- static expressions, could split out but leave
@@ -191,7 +200,16 @@ instance Show LlvmStatic where
   show (LMComment       s) = "; " ++ s
   show (LMStaticLit   l  ) = show l
   show (LMUninitType    t) = show t ++ " undef"
-  show (LMStatStr     s t) = show t ++ " c\"" ++ s ++ "\\00\""
+  show (LMStaticStr     s t) = show t ++ " c\"" ++ s ++ "\\00\""
+
+  show (LMStaticArray d t)
+      = let struc = case d of
+              [] -> "[]"
+              ts -> "[" ++
+                      (show (head ts) ++ concat (map (\x -> "," ++ show x)
+                          (tail ts)))
+                      ++ "]"
+        in show t ++ " " ++ struc
 
   show (LMStaticStruc d t)
       = let struc = case d of
@@ -269,29 +287,19 @@ commaCat :: Show a => [a] -> String
 commaCat [] = ""
 commaCat x  = show (head x) ++ (concat $ map (\y -> "," ++ show y) (tail x))
 
+
 -- | Test if a 'LlvmVar' is global.
 isGlobal :: LlvmVar -> Bool
 isGlobal (LMGlobalVar _ _ _) = True
 isGlobal _                   = False  
   
+
 -- | Return the variable name or value of the 'LlvmVar'
 --   in Llvm IR textual representation (e.g. @\@x@, @%y@ or @42@).
 getName :: LlvmVar -> String
 getName (LMGlobalVar x _ _ ) = "@" ++ x
 getName (LMLocalVar  x _)    = "%" ++ x
 getName (LMLitVar x)         = getLit x
-
--- | Print a literal value. No type.
-getLit :: LlvmLit -> String
-getLit (LMIntLit i _)   = show i
-getLit (LMFloatLit r _) =
-    let d = fromRational r :: Double
-        -- BUG: INFIN.. aren't valid LLVM values, will cause compile error
-        str | isInfinite d && d < 0 = "-INFINITY"
-            | isInfinite d          = "INFINITY"
-            | isNaN d               = "NAN"
-            | otherwise             = show d
-    in str
 
 -- | Return the variable name or value of the 'LlvmVar'
 --   in a plain textual representation (e.g. @x@, @y@ or @42@).
@@ -300,16 +308,21 @@ getPlainName (LMGlobalVar x _ _) = x
 getPlainName (LMLocalVar  x _)   = x
 getPlainName (LMLitVar x)        = getLit x
 
+-- | Print a literal value. No type.
+getLit :: LlvmLit -> String
+getLit (LMIntLit i _)   = show i
+-- In Llvm float literals can be printed in a big-endian hexadecimal format,
+-- regardless of underlying architecture.
+getLit (LMFloatLit r LMFloat)  = fToStr $ fromRational r
+getLit (LMFloatLit r LMDouble) = dToStr $ fromRational r
+getLit l = error $ "getLit: Usupported LlvmLit type! " ++ show (getLitType l)
+
+
 -- | Return the 'LlvmType' of the 'LlvmVar'
 getVarType :: LlvmVar -> LlvmType
 getVarType (LMGlobalVar _ y _) = y
 getVarType (LMLocalVar _  y  ) = y
 getVarType (LMLitVar      l  ) = getLitType l
-
--- | Return the 'LlvmLinkageType' for a 'LlvmVar'
-getLink :: LlvmVar -> LlvmLinkageType
-getLink (LMGlobalVar _ _ l) = l
-getLink _                   = ExternallyVisible
  
 -- | Return the 'LlvmType' of a 'LlvmLit'
 getLitType :: LlvmLit -> LlvmType
@@ -320,7 +333,8 @@ getLitType (LMFloatLit _ t) = t
 getStatType :: LlvmStatic -> LlvmType
 getStatType (LMStaticLit   l  ) = getLitType l
 getStatType (LMUninitType    t) = t
-getStatType (LMStatStr     _ t) = t
+getStatType (LMStaticStr   _ t) = t
+getStatType (LMStaticArray _ t) = t
 getStatType (LMStaticStruc _ t) = t
 getStatType (LMStaticPointer v) = getVarType v
 getStatType (LMPtoI        _ t) = t
@@ -332,30 +346,28 @@ getStatType (LMComment       _) = error "Can't call getStatType on LMComment!"
 getGlobalType :: LMGlobal -> LlvmType
 getGlobalType (v, _) = getVarType v
 
+
 -- | Return the 'LlvmVar' part of a 'LMGlobal'
 getGlobalVar :: LMGlobal -> LlvmVar
 getGlobalVar (v, _) = v
 
--- | Shortcut for 64 bit integer 
-i64 :: LlvmType
-i64 = LMInt 64
 
--- | Shortcut for 32 bit integer
-i32 :: LlvmType
-i32 = LMInt 32
+-- | Return the 'LlvmLinkageType' for a 'LlvmVar'
+getLink :: LlvmVar -> LlvmLinkageType
+getLink (LMGlobalVar _ _ l) = l
+getLink _                   = ExternallyVisible
 
--- | Shortcut for 16 bit integer
-i16 :: LlvmType
-i16 = LMInt 16
 
--- | Shortcut for 8 bit integer (byte)
-i8 :: LlvmType
-i8  = LMInt 8
-
--- | Shortcut for 1 bit integer (boolean)
-i1 :: LlvmType
-i1  = LMInt 1
+-- | Shortcut for common bit types
+i128, i64, i32, i16, i8, i1 :: LlvmType
+i128 = LMInt 128
+i64  = LMInt  64
+i32  = LMInt  32
+i16  = LMInt  16
+i8   = LMInt   8
+i1   = LMInt   1
    
+
 -- | Add a pointer indirection to the supplied type. 'Label' and 'Void'
 --  cannot be lifted.
 pLift :: LlvmType -> LlvmType
@@ -367,12 +379,14 @@ pLift x         = LMPointer x
 --  constructors can be lowered.
 pLower :: LlvmType -> LlvmType
 pLower (LMPointer x) = x
-pLower x             = error $ show x ++ " is a unlowerable type, need a pointer"
+pLower x  = error $ show x ++ " is a unlowerable type, need a pointer"
 
+-- | Lower a variable of LMPointer type.
 pVarLower :: LlvmVar -> LlvmVar
 pVarLower (LMGlobalVar s t l) = LMGlobalVar s (pLower t) l
 pVarLower (LMLocalVar s t   ) = LMLocalVar s (pLower t)
 pVarLower (LMLitVar _)        = error $ "Can't lower a literal type!"
+
 
 -- | Test if the given 'LlvmType' is an integer
 isInt :: LlvmType -> Bool
@@ -391,6 +405,7 @@ isFloat _          = False
 isPointer :: LlvmType -> Bool
 isPointer (LMPointer _) = True
 isPointer _             = False
+
 
 -- | Width in bits of an LlvmType, returns 0 if not applicable
 llvmWidthInBits :: LlvmType -> Int
@@ -654,4 +669,56 @@ instance Show LlvmFuncAttr where
   show NoRedZone       = "noredzone"
   show NoImplicitFloat = "noimplicitfloat"
   show Naked           = "naked"
+
+
+-- -----------------------------------------------------------------------------
+-- Converting floating-point literals to integrals for printing
+--
+
+convfd :: Float -> Double
+convfd = realToFrac::Float->Double
+
+convdf :: Double -> Float
+convdf = realToFrac::Double->Float
+
+fToStr :: Float -> String
+fToStr f = dToStr $ convfd f
+
+dToStr :: Double -> String
+dToStr d = 
+    let bs  = doubleToBytes d
+        hex d' = case showHex d' "" of
+                     []    -> error "dToStr: too few hex digits for float"
+                     [x]   -> ['0',x]
+                     [x,y] -> [x,y]
+                     _     -> error "dToStr: too many hex digits for float"
+
+        -- TODO: Need to always print big endian
+        str' = concat . reverse . (map hex) $ bs
+        str = map toUpper str'
+    in  "0x" ++ str
+
+castDoubleToWord8Array :: STUArray s Int Double -> ST s (STUArray s Int Word8)
+castDoubleToWord8Array = castSTUArray
+
+-- doubleToBytes convert to the host's byte order.
+-- Providing that we're not cross-compiling for a target with the
+-- opposite endianness, this should work ok on all targets.
+
+doubleToBytes :: Double -> [Int]
+doubleToBytes d
+   = runST (do
+        arr <- newArray_ ((0::Int),7)
+        writeArray arr 0 d
+        arr <- castDoubleToWord8Array arr
+        i0 <- readArray arr 0
+        i1 <- readArray arr 1
+        i2 <- readArray arr 2
+        i3 <- readArray arr 3
+        i4 <- readArray arr 4
+        i5 <- readArray arr 5
+        i6 <- readArray arr 6
+        i7 <- readArray arr 7
+        return (map fromIntegral [i0,i1,i2,i3,i4,i5,i6,i7])
+     )
 

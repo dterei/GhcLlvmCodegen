@@ -9,12 +9,12 @@ module LlvmCodeGen.Ppr (
 #include "HsVersions.h"
 
 import Llvm
-import Llvm.PpLlvm
 import LlvmCodeGen.Base
 import LlvmCodeGen.Data
 
 import CLabel
 import Cmm
+
 import DynFlags
 import Pretty
 

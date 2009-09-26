@@ -24,9 +24,9 @@ module Llvm.PpLlvm (
 import Llvm.AbsSyn
 import Llvm.Types
 
--- import Text.PrettyPrint.HughesPJ
-import Pretty
 import Data.List ( intersperse )
+import Pretty
+-- import Text.PrettyPrint.HughesPJ
 
 ppLlvmModule :: LlvmModule -> Doc
 ppLlvmModule (LlvmModule comments constants globals decls funcs)

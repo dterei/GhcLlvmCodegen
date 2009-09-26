@@ -138,8 +138,10 @@ resData _ _ = panic "resData: Non CLabel expr as left type!"
 --   Don't handle CmmAlign or a CmmDataLabel.
 genData :: CmmStatic -> UnresStatic
 
-genData (CmmString str)
-    = Right $ LMStatStr (genLlvmStr str) (LMArray (1 + length str) i8)
+genData (CmmString str) =
+    let v  = map (\x -> LMStaticLit $ LMIntLit (fromIntegral x) i8) str
+        ve = v ++ [LMStaticLit $ LMIntLit 0 i8]
+    in Right $ LMStaticArray ve (LMArray (length ve) i8)
 
 genData (CmmUninitialised bytes)
     = Right $ LMUninitType (LMArray bytes i8)
@@ -154,9 +156,9 @@ genData (CmmDataLabel _)
     = panic "genData: Can't handle data labels not at top of data!"
 
 
--- | Pretty print a static literal.
---   Returns a tuple, the first element being the static value, the second
---   value being a supporting forward reference if needed (e.g for labels).
+-- | Generate Llvm code for a static literal.
+--   Will either generate the code or leave it unresolved if it is a CLabel
+--   which isn't yet known.
 genStaticLit :: CmmLit -> UnresStatic
 genStaticLit (CmmInt i w)
     = Right $ LMStaticLit (LMIntLit i (LMInt $ widthInBits w))

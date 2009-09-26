@@ -10,6 +10,7 @@ module LlvmCodeGen.Regs ( get_GlobalReg_addr ) where
 #include "HsVersions.h"
 
 import Cmm
+
 import qualified CgUtils ( get_GlobalReg_addr )
 
 -- | We map STG registers onto appropriate CmmExprs.

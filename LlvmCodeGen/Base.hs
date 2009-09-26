@@ -10,7 +10,7 @@ module LlvmCodeGen.Base (
         UnresStatic, LlvmEnv,
 
         cmmToLlvmType, widthToLlvmFloat, widthToLlvmInt, llvmWord, llvmFunTy,
-        llvmFunSig, llvmPtrBits, genLlvmStr,
+        llvmFunSig, llvmPtrBits,
 
         initLlvmEnv, mainCapability, strBlockId_llvm, strCLabel_llvm,
         genCmmLabelRef, genStringLabelRef, llvmSDoc
@@ -25,6 +25,7 @@ import BlockId
 import CLabel
 import Cmm
 import CmmExpr
+
 import Outputable ( ppr )
 import qualified Outputable
 import Pretty
@@ -32,8 +33,6 @@ import Unique
 
 import Data.Char
 import qualified Data.Map as Map
-import Data.Word
-import Numeric
 
 -- ----------------------------------------------------------------------------
 -- Some data types
@@ -99,33 +98,6 @@ initLlvmEnv
   = let n = getPlainName $ getGlobalVar mainCapability
         t = pLower $ getGlobalType mainCapability
     in Map.insert n t Map.empty
-
-
--- ----------------------------------------------------------------------------
--- String handling
---
-
--- | Print strings as valid C strings
-genLlvmStr :: [Word8] -> LMString
-genLlvmStr s = concatMap genLlvmStr' s
-
-genLlvmStr' :: Word8 -> LMString
-genLlvmStr' w =
-    let conv c | isLlvmOk c = [c]
-               | otherwise  = hex w
-                
-        -- BUG: Bug with this version
-        --isLlvmOk l = isAscii l && isPrint l && l /= '"'
-        isLlvmOk _ = False
-
-        hex l = let s = showHex l ""
-                in case s of
-                    []       -> panic "genLlvmStr': returned nothing"
-                    (x:[])   -> ['\\','0',(toUpper x)]
-                    (x:y:[]) -> ['\\',(toUpper x),(toUpper y)]
-                    _        -> panic "genLlvmStr': returned too much"
-
-    in conv (chr $ fromIntegral w) 
 
 
 -- ----------------------------------------------------------------------------
