@@ -546,7 +546,7 @@ genMachOp env _ op [x] = case op of
     where
         negate ty v2 negOp = do
             (env', vx, stmts, top) <- exprToVar env x
-            (v1, s1) <- doExpr ty $ LlvmOp negOp vx v2
+            (v1, s1) <- doExpr ty $ LlvmOp negOp v2 vx
             return (env', v1, stmts ++ [s1], top)
 
         fiConv ty convOp = do
