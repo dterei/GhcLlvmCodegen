@@ -59,7 +59,6 @@ data LlvmMachOp
   -- Following take two integer, floating point or vector values.
   = LM_MO_Add
   | LM_MO_Sub
-  | LM_MO_FSub
   | LM_MO_Mul
   | LM_MO_UDiv -- unsigned integer or vector division.
   | LM_MO_SDiv -- signed integer ..
@@ -85,7 +84,6 @@ data LlvmMachOp
 instance Show LlvmMachOp where
   show LM_MO_Add  = "add"
   show LM_MO_Sub  = "sub"
-  show LM_MO_FSub = "fsub"
   show LM_MO_Mul  = "mul"
   show LM_MO_UDiv = "udiv"
   show LM_MO_SDiv = "sdiv"
