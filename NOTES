@@ -51,13 +51,9 @@ Todo
 BUGS
 ~~~~
 
- - Only work on small-endian machines. Need to detect endianness somehow for
- floating point literals.
-
  - Bug with lists of floats ([Float]). Think to do with incorrect size since
  a list of doubles works fine. See ghc bug $1852.
  Update: No, bug in ghc itself, not my back-end. Update to HEAD.
-
- - Generate incorrect code for Happy generated hs files. Errors with an out of
- range problem.
+ 
+ - ghc-stage2 built with llvm segaults.
 

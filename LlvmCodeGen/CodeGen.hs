@@ -366,7 +366,6 @@ cmmPrimOpFunctions mop
     MO_F64_Cosh   -> fsLit "cosh"
     MO_F64_Tanh   -> fsLit "tanh"
 
-    -- TODO: Handle write barrier
     a -> panic $ "cmmPrimOpFunctions: Unknown callish op! (" ++ show a ++ ")"
 
 

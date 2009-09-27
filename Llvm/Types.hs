@@ -5,6 +5,7 @@
 module Llvm.Types where
 
 #include "HsVersions.h"
+#include "ghcconfig.h"
 
 import Control.Monad.ST
 import Data.Array.ST
@@ -690,8 +691,7 @@ dToStr d =
                      [x,y] -> [x,y]
                      _     -> error "dToStr: too many hex digits for float"
 
-        -- TODO: Need to always print big endian
-        str' = concat . reverse . (map hex) $ bs
+        str' = concat . fixEndian . (map hex) $ bs
         str = map toUpper str'
     in  "0x" ++ str
 
@@ -718,4 +718,21 @@ doubleToBytes d
         i7 <- readArray arr 7
         return (map fromIntegral [i0,i1,i2,i3,i4,i5,i6,i7])
      )
+
+
+-- | Reverse or leave byte data alone to fix endianness on this
+-- target. LLVM generally wants things in Big-Endian form
+-- regardless of target architecture.
+fixEndian :: [a] -> [a]
+fixEndian = case isBigEndian of
+    True  -> id
+    False -> reverse
+
+-- | Is the architecture we are running on big-endian?
+isBigEndian :: Bool
+#ifdef WORDS_BIGENDIAN
+isBigEndian = True
+#else
+isBigEndian = False
+#endif
 
