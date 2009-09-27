@@ -9,14 +9,12 @@ module LlvmCodeGen ( llvmCodeGen ) where
 
 #include "HsVersions.h"
 
-import Llvm
 import LlvmCodeGen.Base
 import LlvmCodeGen.CodeGen
 import LlvmCodeGen.Data
 import LlvmCodeGen.Ppr
 import LlvmCodeGen.Regs
 
-import CLabel
 import Cmm
 import CmmOpt ( cmmMiniInline, cmmMachOpFold )
 import PprCmm
@@ -45,7 +43,7 @@ llvmCodeGen dflags h us cmms
       Prt.bufLeftRender bufh $ pprLlvmHeader
 
       env <- cmmDataLlvmGens dflags bufh cmm
-      cmmProcLlvmGens dflags bufh us env cmm 0
+      cmmProcLlvmGens dflags bufh us env cmm
 
       bFlush bufh
 
@@ -63,7 +61,7 @@ cmmDataLlvmGens
       -> [RawCmmTop]
       -> IO ( LlvmEnv )
 
-cmmDataLlvmGens dflags h []
+cmmDataLlvmGens _ _ []
   = return ( initLlvmEnv )
 
 cmmDataLlvmGens dflags h cmm =
@@ -96,7 +94,7 @@ cmmDataLlvmGens' dflags h env [] lmdata
 
 cmmDataLlvmGens' dflags h env (cmm:cmms) lmdata
     = do
-        let lmdata'@(l, ty, d) = genLlvmData dflags cmm
+        let lmdata'@(l, ty, _) = genLlvmData dflags cmm
         let env' = Map.insert (strCLabel_llvm l) ty env
         cmmDataLlvmGens' dflags h env' cmms (lmdata ++ [lmdata'])
 
@@ -110,37 +108,32 @@ cmmProcLlvmGens
       -> UniqSupply
       -> LlvmEnv
       -> [RawCmmTop]
-      -> Int
       -> IO ()
 
-cmmProcLlvmGens dflags h us env [] count
+cmmProcLlvmGens _ _ _ _ []
     = return ()
 
-cmmProcLlvmGens dflags h us env (cmm : cmms) count
+cmmProcLlvmGens dflags h us env (cmm : cmms)
   = do
-      (us', env', llvm) <- cmmLlvmGen dflags h us env cmm count
+      (us', env', llvm) <- cmmLlvmGen dflags us env cmm
 
       Prt.bufLeftRender h $ Prt.vcat $ map (pprLlvmCmmTop dflags) llvm
 
-      let count' = count + 1
-
-      cmmProcLlvmGens dflags h us' env' cmms count'
+      cmmProcLlvmGens dflags h us' env' cmms
 
 
 -- | Complete llvm code generation phase for a single top-level chunk of Cmm.
 --
 cmmLlvmGen
       :: DynFlags
-      -> BufHandle
       -> UniqSupply
       -> LlvmEnv
       -> RawCmmTop                                    -- ^ the cmm to generate code for
-      -> Int                                          -- ^ sequence number of this top thing
       -> IO ( UniqSupply,
               LlvmEnv,
               [LlvmCmmTop] )                          -- native code
 
-cmmLlvmGen dflags h us env cmm count
+cmmLlvmGen dflags us env cmm 
   = do
     -- rewrite assignments to global regs
     let (fixed_cmm, usFix) = initUs us $ fixAssignsTop cmm
@@ -170,13 +163,13 @@ genLlvmCode
     -> RawCmmTop 
     -> UniqSM (LlvmEnv, [LlvmCmmTop])
 
-genLlvmCode dflags env (CmmData _ _)
+genLlvmCode _ env (CmmData _ _)
     = return (env, [])
 
-genLlvmCode dflags env (CmmProc _ _ _ (ListGraph []))
+genLlvmCode _ env (CmmProc _ _ _ (ListGraph []))
     = return (env, [])
 
-genLlvmCode dflags env cp@(CmmProc _ _ _ _)
+genLlvmCode _ env cp@(CmmProc _ _ _ _)
     = genLlvmProc env cp
 
 -- -----------------------------------------------------------------------------
