@@ -24,14 +24,12 @@ import Llvm
 import BlockId
 import CLabel
 import Cmm
-import CmmExpr
 
 import Outputable ( ppr )
 import qualified Outputable
 import Pretty
 import Unique
 
-import Data.Char
 import qualified Data.Map as Map
 
 -- ----------------------------------------------------------------------------
