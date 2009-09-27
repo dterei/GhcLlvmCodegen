@@ -643,7 +643,9 @@ genMachOp env opt op [x, y] = case op of
                 then do
                     (v1, s1) <- doExpr (ty vx) $ binOp vx vy
                     return (env2, v1, stmts1 ++ stmts2 ++ [s1], top1 ++ top2)
+
                 else do
+                    -- error. continue anyway so we can debug the generated ll file.
                     let dx = Comment $ lines.show.llvmSDoc.PprCmm.pprExpr $ x
                     let dy = Comment $ lines.show.llvmSDoc.PprCmm.pprExpr $ y
                     (v1, s1) <- doExpr (ty vx) $ binOp vx vy
