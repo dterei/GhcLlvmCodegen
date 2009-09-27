@@ -4,9 +4,14 @@
 
 module Llvm.Types where
 
+-- GHC specific
 #include "HsVersions.h"
 #include "ghcconfig.h"
 
+-- GHC specific
+import Constants
+
+-- general libraries
 import Control.Monad.ST
 import Data.Array.ST
 import Data.Char
@@ -14,7 +19,7 @@ import Data.Word
 import Numeric
 
 
--- | Llvm compare functions, parameter of the 'Expression_Compare' constructor 
+-- | Llvm compare functions, parameter of the 'Expression_Compare' constructor
 --   of type 'Expression'
 data LlvmCmpOp
   = LM_CMP_Eq  -- Equality
@@ -182,10 +187,10 @@ data LlvmStatic
   | LMStaticStruc [LlvmStatic] LlvmType
   -- | A pointer to other data
   | LMStaticPointer LlvmVar
-  
+
   -- static expressions, could split out but leave
   -- for moment for ease of use. Not many of them.
-  
+
   -- pointer to int
   | LMPtoI LlvmStatic LlvmType
   -- constant add
@@ -250,7 +255,7 @@ data LlvmType
   | LMPointer LlvmType
   -- An array of 'LlvmType'
   | LMArray Int LlvmType
-  -- A 'LlvmVar' can represent a label (address) 
+  -- A 'LlvmVar' can represent a label (address)
   | LMLabel
   -- Void
   | LMVoid
@@ -269,7 +274,7 @@ instance Show LlvmType where
   show (LMFloat80     ) = "x86_fp80"
   show (LMFloat128    ) = "fp128"
   show (LMPointer x   ) = show x ++ "*"
-  show (LMArray nr tp ) = "[" ++ show nr ++ " x " ++ show tp ++ "]"       
+  show (LMArray nr tp ) = "[" ++ show nr ++ " x " ++ show tp ++ "]"
   show (LMLabel       ) = "label"
   show (LMVoid        ) = "void"
   show (LMStruct tys  ) = "{" ++ (commaCat tys) ++ "}"
@@ -289,8 +294,8 @@ commaCat x  = show (head x) ++ (concat $ map (\y -> "," ++ show y) (tail x))
 -- | Test if a 'LlvmVar' is global.
 isGlobal :: LlvmVar -> Bool
 isGlobal (LMGlobalVar _ _ _) = True
-isGlobal _                   = False  
-  
+isGlobal _                   = False
+
 
 -- | Return the variable name or value of the 'LlvmVar'
 --   in Llvm IR textual representation (e.g. @\@x@, @%y@ or @42@).
@@ -308,7 +313,7 @@ getPlainName (LMLitVar x)        = getLit x
 
 -- | Print a literal value. No type.
 getLit :: LlvmLit -> String
-getLit (LMIntLit i _)   = show i
+getLit (LMIntLit i _)   = show ((fromInteger i)::Int)
 -- In Llvm float literals can be printed in a big-endian hexadecimal format,
 -- regardless of underlying architecture.
 getLit (LMFloatLit r LMFloat)  = fToStr $ fromRational r
@@ -321,7 +326,7 @@ getVarType :: LlvmVar -> LlvmType
 getVarType (LMGlobalVar _ y _) = y
 getVarType (LMLocalVar _  y  ) = y
 getVarType (LMLitVar      l  ) = getLitType l
- 
+
 -- | Return the 'LlvmType' of a 'LlvmLit'
 getLitType :: LlvmLit -> LlvmType
 getLitType (LMIntLit   _ t) = t
@@ -364,7 +369,10 @@ i32  = LMInt  32
 i16  = LMInt  16
 i8   = LMInt   8
 i1   = LMInt   1
-   
+
+-- | The target architectures word size
+llvmWord :: LlvmType
+llvmWord = LMInt (wORD_SIZE * 8)
 
 -- | Add a pointer indirection to the supplied type. 'Label' and 'Void'
 --  cannot be lifted.
@@ -373,7 +381,7 @@ pLift (LMLabel) = error "Labels are unliftable"
 pLift (LMVoid)  = error "Voids are unliftable"
 pLift x         = LMPointer x
 
--- | Remove the pointer indirection of the supplied type. Only 'Pointer' 
+-- | Remove the pointer indirection of the supplied type. Only 'Pointer'
 --  constructors can be lowered.
 pLower :: LlvmType -> LlvmType
 pLower (LMPointer x) = x
@@ -412,10 +420,10 @@ llvmWidthInBits (LMFloat)        = 32
 llvmWidthInBits (LMDouble)       = 64
 llvmWidthInBits (LMFloat80)      = 80
 llvmWidthInBits (LMFloat128)     = 128
--- Really should return the pointer width, but can't do that without support
--- FIX: return pointer width
-llvmWidthInBits (LMPointer t)    = llvmWidthInBits t
-llvmWidthInBits (LMArray _ t)    = llvmWidthInBits t
+-- Could return either a pointer width here or the width of what
+-- it points to. We will go with the former for now.
+llvmWidthInBits (LMPointer _)    = llvmWidthInBits llvmWord
+llvmWidthInBits (LMArray _ _)    = llvmWidthInBits llvmWord
 llvmWidthInBits LMLabel          = 0
 llvmWidthInBits LMVoid           = 0
 llvmWidthInBits (LMStruct tys)   = sum $ map llvmWidthInBits tys
@@ -433,7 +441,7 @@ llvmWidthInBits (LMAlias _ t)    = llvmWidthInBits t
 --    * funCc:      The calling convention of the function.
 --    * returnType: Type of the returned value
 --    * varargs:    ParameterListType indicating if this function uses varargs
---    * params:     Signature of the parameters 
+--    * params:     Signature of the parameters
 data LlvmFunctionDecl = LlvmFunctionDecl {
         decName       :: LMString,
         funcLinkage   :: LlvmLinkageType,
@@ -495,10 +503,10 @@ data LlvmCallConvention
   -- | Any calling convention may be specified by number, allowing
   --   target-specific calling conventions to be used. Target specific calling
   --   conventions start at 64.
-  | CC_Ncc Int  
+  | CC_Ncc Int
   -- | X86 Specific 'StdCall' convention. LLVM includes a specific alias for it
   -- rather than just using CC_Ncc.
-  | CC_X86_Stdcc 
+  | CC_X86_Stdcc
   deriving (Eq)
 
 instance Show LlvmCallConvention where
@@ -519,57 +527,57 @@ data LlvmParameterListType
 
 
 -- | Linkage type of a symbol. The description of the constructors is copied from
---  the Llvm Assembly Language Reference Manual 
---  <http://www.llvm.org/docs/LangRef.html#linkage>, because they correspond to 
+--  the Llvm Assembly Language Reference Manual
+--  <http://www.llvm.org/docs/LangRef.html#linkage>, because they correspond to
 --  the Llvm linkage types.
 data LlvmLinkageType
-  -- | Global values with internal linkage are only directly accessible by 
+  -- | Global values with internal linkage are only directly accessible by
   --   objects in the current module. In particular, linking code into a module
-  --   with an internal global value may cause the internal to be renamed as 
-  --   necessary to avoid collisions. Because the symbol is internal to the 
-  --   module, all references can be updated. This corresponds to the notion 
+  --   with an internal global value may cause the internal to be renamed as
+  --   necessary to avoid collisions. Because the symbol is internal to the
+  --   module, all references can be updated. This corresponds to the notion
   --   of the @static@ keyword in C.
   = Internal
-  -- | Globals with @linkonce@ linkage are merged with other globals of the 
-  --   same name when linkage occurs. This is typically used to implement 
-  --   inline functions, templates, or other code which must be generated 
+  -- | Globals with @linkonce@ linkage are merged with other globals of the
+  --   same name when linkage occurs. This is typically used to implement
+  --   inline functions, templates, or other code which must be generated
   --   in each translation unit that uses it. Unreferenced linkonce globals are
   --   allowed to be discarded.
   | LinkOnce
-  -- | @weak@ linkage is exactly the same as linkonce linkage, except that 
+  -- | @weak@ linkage is exactly the same as linkonce linkage, except that
   --   unreferenced weak globals may not be discarded. This is used for globals
-  --   that may be emitted in multiple translation units, but that are not 
+  --   that may be emitted in multiple translation units, but that are not
   --   guaranteed to be emitted into every translation unit that uses them. One
-  --   example of this are common globals in C, such as @int X;@ at global 
+  --   example of this are common globals in C, such as @int X;@ at global
   --   scope.
   | Weak
-  -- | @appending@ linkage may only be applied to global variables of pointer 
-  --   to array type. When two global variables with appending linkage are 
-  --   linked together, the two global arrays are appended together. This is 
-  --   the Llvm, typesafe, equivalent of having the system linker append 
+  -- | @appending@ linkage may only be applied to global variables of pointer
+  --   to array type. When two global variables with appending linkage are
+  --   linked together, the two global arrays are appended together. This is
+  --   the Llvm, typesafe, equivalent of having the system linker append
   --   together @sections@ with identical names when .o files are linked.
   | Appending
-  -- | The semantics of this linkage follow the ELF model: the symbol is weak 
+  -- | The semantics of this linkage follow the ELF model: the symbol is weak
   --   until linked, if not linked, the symbol becomes null instead of being an
   --   undefined reference.
   | ExternWeak
-  -- | The symbol participates in linkage and can be used to resolve external 
+  -- | The symbol participates in linkage and can be used to resolve external
   --   symbol references.
   | ExternallyVisible
   -- | Alias for 'ExternallyVisible' but with explicit textual form in LLVM
   --   assembly.
   | External
   deriving (Eq)
-  
+
 instance Show LlvmLinkageType where
   show Internal          = "internal"
   show LinkOnce          = "linkonce"
-  show Weak              = "weak"       
+  show Weak              = "weak"
   show Appending         = "appending"
   show ExternWeak        = "extern_weak"
-  -- ExternallyVisible does not have a textual representation, it is 
+  -- ExternallyVisible does not have a textual representation, it is
   -- the linkage type a function resolves to if no other is specified
-  -- in Llvm.  
+  -- in Llvm.
   show ExternallyVisible = ""
   show External          = "external"
 
@@ -683,7 +691,7 @@ fToStr :: Float -> String
 fToStr f = dToStr $ convfd f
 
 dToStr :: Double -> String
-dToStr d = 
+dToStr d =
     let bs  = doubleToBytes d
         hex d' = case showHex d' "" of
                      []    -> error "dToStr: too few hex digits for float"

@@ -33,7 +33,7 @@ structStr = "_struct"
 -- Top level
 --
 
--- | Pass a CmmStatic section to an equivalent Llvm code. Can't 
+-- | Pass a CmmStatic section to an equivalent Llvm code. Can't
 --   complete this completely though as we need to pass all CmmStatic
 --   sections before all references can be resolved. This last step is
 --   done by 'resolveLlvmData'.
@@ -104,7 +104,7 @@ resData env (Left cmm@(CmmLabel l)) =
         lmty = cmmToLlvmType $ cmmLitType cmm
     in case ty of
             -- Make generic external label defenition and then pointer to it
-            Nothing -> 
+            Nothing ->
                 let glob@(var, _) = genStringLabelRef label
                     env' =  Map.insert label (pLower $ getVarType var) env
                     ptr  = LMStaticPointer var
@@ -175,7 +175,7 @@ genStaticLit (CmmBlock b) = Left $ CmmLabel $ infoTblLbl b
 
 genStaticLit (CmmHighStackMark)
     = panic "genStaticLit: CmmHighStackMark unsupported!"
-  
+
 
 -- -----------------------------------------------------------------------------
 -- Misc

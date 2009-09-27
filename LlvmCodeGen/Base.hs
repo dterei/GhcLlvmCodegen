@@ -9,7 +9,7 @@ module LlvmCodeGen.Base (
         LlvmCmmTop, LlvmBasicBlock, LlvmUnresData, LlvmData, UnresLabel,
         UnresStatic, LlvmEnv,
 
-        cmmToLlvmType, widthToLlvmFloat, widthToLlvmInt, llvmWord, llvmFunTy,
+        cmmToLlvmType, widthToLlvmFloat, widthToLlvmInt, llvmFunTy,
         llvmFunSig, llvmPtrBits,
 
         initLlvmEnv, mainCapability, strBlockId_llvm, strCLabel_llvm,
@@ -66,15 +66,11 @@ widthToLlvmFloat W32  = LMFloat
 widthToLlvmFloat W64  = LMDouble
 widthToLlvmFloat W80  = LMFloat80
 widthToLlvmFloat W128 = LMFloat128
-widthToLlvmFloat w    = panic $ "widthToLlvmFloat: Invalid float size, " ++ show w 
+widthToLlvmFloat w    = panic $ "widthToLlvmFloat: Invalid float size, " ++ show w
 
 -- | Translate a Cmm Bit Width to a LlvmType.
 widthToLlvmInt :: Width -> LlvmType
 widthToLlvmInt w = LMInt $ widthInBits w
-
--- | Llvm word
-llvmWord :: LlvmType
-llvmWord = widthToLlvmInt wordWidth
 
 -- | Llvm Function type for Cmm function
 llvmFunTy :: LlvmType
@@ -134,7 +130,7 @@ genStringLabelRef cl =
 
 -- | Convert SDoc to Doc
 llvmSDoc :: Outputable.SDoc -> Doc
-llvmSDoc d 
+llvmSDoc d
 	= Outputable.withPprStyleDoc (Outputable.mkCodeStyle Outputable.AsmStyle) d
 
 -- | error function

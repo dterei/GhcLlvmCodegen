@@ -84,11 +84,11 @@ dominateAllocs (BasicBlock id stmts)
   = (BasicBlock id allstmts, allallocs)
     where
         (allstmts, allallocs) = foldl split ([],[]) stmts
-        split (stmts', allocs) s@(Assignment _ (Alloca _ _)) 
+        split (stmts', allocs) s@(Assignment _ (Alloca _ _))
             = (stmts', allocs ++ [s])
         split (stmts', allocs) other
             = (stmts' ++ [other], allocs)
-    
+
 
 -- -----------------------------------------------------------------------------
 -- CmmStmt code generation
@@ -111,7 +111,7 @@ stmtsToInstrs env (stmt : stmts) (llvm, top)
    = do (env', instrs, tops) <- stmtToInstrs env stmt
         stmtsToInstrs env' stmts (llvm ++ instrs, top ++ tops)
 
-  
+
 -- | Convert a CmmStmt to a list of LlvmStatement's
 --
 stmtToInstrs :: LlvmEnv -> CmmStmt
@@ -137,7 +137,7 @@ stmtToInstrs env stmt = case stmt of
     CmmJump arg _ -> genJump env arg
 
     -- CPS, only tail calls, no return's
-    CmmReturn _       
+    CmmReturn _
         -> panic "stmtToInstrs: return statement should have been cps'd away"
 
 
@@ -269,7 +269,7 @@ genCall env target res args ret = do
                 let name = cmmPrimOpFunctions mop
                 let lbl  = mkForeignLabel name Nothing True IsFunction
                 getFunPtr $ CmmCallee (CmmLit (CmmLabel lbl)) CCallConv
-    
+
     (env2, fptr, stmts2, top2) <- getFunPtr target
 
     let retStmt | ccTy == TailCall = [Return (LMLocalVar "void" LMVoid)]
@@ -288,7 +288,7 @@ genCall env target res args ret = do
             if retTy == pLower (getVarType vreg)
                 then do
                     let s2 = Store v1 vreg
-                    return (env3, stmts1 ++ stmts2 ++ stmts3 ++ [s1,s2] 
+                    return (env3, stmts1 ++ stmts2 ++ stmts3 ++ [s1,s2]
                             ++ retStmt, top1 ++ top2 ++ top3)
                 else do
                     let ty = pLower $ getVarType vreg
@@ -303,7 +303,7 @@ genCall env target res args ret = do
                     let s3 = Store v2 vreg
                     return (env3, stmts1 ++ stmts2 ++ stmts3 ++ [s1,s2,s3]
                             ++ retStmt, top1 ++ top2 ++ top3)
-                
+
 
 -- Conversion of call arguments.
 arg_vars :: LlvmEnv -> HintedCmmActuals -> ([LlvmVar], [LlvmStatement], [LlvmCmmTop])
@@ -377,7 +377,7 @@ genJump :: LlvmEnv -> CmmExpr -> UniqSM StmtData
 genJump env (CmmLit (CmmLabel lbl)) = do
     (env', vf, stmts, top) <- getHsFunc env lbl
     let s1 = Expr $ Call TailCall vf []
-    let s2 = Return (LMLocalVar "void" LMVoid) 
+    let s2 = Return (LMLocalVar "void" LMVoid)
     return (env', stmts ++ [s1,s2], top)
 
 -- Call to unknown function / address
@@ -394,7 +394,7 @@ genJump env expr = do
 
     (v1, s1) <- doExpr (pLift fty) $ Cast cast vf (pLift fty)
     let s2 = Expr $ Call TailCall v1 []
-    let s3 = Return (LMLocalVar "void" LMVoid) 
+    let s3 = Return (LMLocalVar "void" LMVoid)
     return (env', stmts ++ [s1,s2,s3], top)
 
 
@@ -436,7 +436,7 @@ genBranch :: LlvmEnv -> BlockId -> UniqSM StmtData
 genBranch env id =
     let label = blockIdToLlvm id
     in return (env, [Branch label], [])
- 
+
 
 -- | Conditional branch
 genCondBranch :: LlvmEnv -> CmmExpr -> BlockId -> UniqSM StmtData
@@ -511,7 +511,7 @@ exprToVarOpt :: LlvmEnv -> EOption -> CmmExpr -> UniqSM ExprData
 exprToVarOpt env opt e = case e of
 
     CmmLit lit
-        -> genLit env lit 
+        -> genLit env lit
 
     CmmLoad e' ty
         -> genCmmLoad env e' ty
@@ -522,14 +522,14 @@ exprToVarOpt env opt e = case e of
         let (env', vreg, stmts, top) = genCmmReg env r
         (v1, s1) <- doExpr (pLower $ getVarType vreg) $ Load vreg
         return (env', v1, stmts ++ [s1], top)
-    
+
     CmmMachOp op exprs
         -> genMachOp env opt op exprs
-    
+
     CmmRegOff r i
         -> exprToVar env $ expandCmmReg (r, i)
 
-    CmmStackSlot _ _ 
+    CmmStackSlot _ _
         -> panic "exprToVar: CmmStackSlot not supported!"
 
 
@@ -539,7 +539,7 @@ genMachOp :: LlvmEnv -> EOption -> MachOp -> [CmmExpr] -> UniqSM ExprData
 -- Unary Machop
 genMachOp env _ op [x] = case op of
 
-    MO_Not w -> 
+    MO_Not w ->
         let all1 = mkIntLit (-1::Int) (widthToLlvmInt w)
         in negate (widthToLlvmInt w) all1 LM_MO_Xor
 
@@ -683,7 +683,7 @@ genMachOp env opt op [x, y] = case op of
                 else
                     panic $ "genBinComp: Compare returned type other then i1! "
                         ++ (show $ getVarType v1)
-        
+
         genBinMach op = binLlvmOp getVarType (LlvmOp op)
 
         -- | Detect if overflow will occur in signed multiply of the two
@@ -792,7 +792,7 @@ genLit env cmm@(CmmLabel l)
         lmty = cmmToLlvmType $ cmmLitType cmm
     in case ty of
             -- Make generic external label defenition and then pointer to it
-            Nothing -> do 
+            Nothing -> do
                 let glob@(var, _) = genStringLabelRef label
                 let ldata = [CmmData Data [([glob], [])]]
                 let env' = Map.insert label (pLower $ getVarType var) env
@@ -833,7 +833,7 @@ genLit env (CmmBlock b)
 
 genLit _ CmmHighStackMark
   = panic "genStaticLit - CmmHighStackMark unsupported!"
-  
+
 
 -- -----------------------------------------------------------------------------
 -- Misc

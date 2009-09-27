@@ -1,10 +1,10 @@
 -- ----------------------------------------------------------------------------
 -- Deal with Cmm registers
--- 
+--
 -- Specifically, force use of register table (in memory), not pinned
 -- hardware registers as the LLVM back-end doesn't support this.
 --
- 
+
 module LlvmCodeGen.Regs ( get_GlobalReg_addr ) where
 
 #include "HsVersions.h"

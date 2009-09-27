@@ -76,7 +76,7 @@ cmmDataLlvmGens dflags h cmm =
         cproc = concat $ map exProclbl cmm
         env = foldl (\e l -> Map.insert l llvmFunTy e) initLlvmEnv cproc
     in cmmDataLlvmGens' dflags h env cdata []
-      
+
 cmmDataLlvmGens'
       :: DynFlags
       -> BufHandle
@@ -133,7 +133,7 @@ cmmLlvmGen
               LlvmEnv,
               [LlvmCmmTop] )                          -- native code
 
-cmmLlvmGen dflags us env cmm 
+cmmLlvmGen dflags us env cmm
   = do
     -- rewrite assignments to global regs
     let (fixed_cmm, usFix) = initUs us $ fixAssignsTop cmm
@@ -157,10 +157,10 @@ cmmLlvmGen dflags us env cmm
 -- Instruction selection
 --
 
-genLlvmCode 
-    :: DynFlags 
+genLlvmCode
+    :: DynFlags
     -> LlvmEnv
-    -> RawCmmTop 
+    -> RawCmmTop
     -> UniqSM (LlvmEnv, [LlvmCmmTop])
 
 genLlvmCode _ env (CmmData _ _)
@@ -173,13 +173,13 @@ genLlvmCode _ env cp@(CmmProc _ _ _ _)
     = genLlvmProc env cp
 
 -- -----------------------------------------------------------------------------
--- Fixup assignments to global registers so that they assign to 
+-- Fixup assignments to global registers so that they assign to
 -- locations within the RegTable, if appropriate.
 
 -- Note that we currently don't fixup reads here: they're done by
 -- the generic optimiser below, to avoid having two separate passes
 -- over the Cmm.
--- 
+--
 -- The LLVM back-end doesn't support pinned registers as of yet.
 --
 
@@ -277,8 +277,8 @@ cmmStmtConFold stmt
         CmmCondBranch test dest
             -> let test' = cmmExprConFold test
                in case test' of
-                      CmmLit (CmmInt 0 _) -> 
-                          CmmComment (mkFastString ("deleted: " ++ 
+                      CmmLit (CmmInt 0 _) ->
+                          CmmComment (mkFastString ("deleted: " ++
                               showSDoc (pprStmt stmt)))
 
                       CmmLit (CmmInt _ _) -> CmmBranch dest
@@ -301,7 +301,7 @@ cmmExprConFold expr
                in CmmLoad addr' rep
 
         CmmMachOp mop args
-            -- For MachOps, we first optimize the children, and then we try 
+            -- For MachOps, we first optimize the children, and then we try
             -- our hand at some constant-folding.
              -> let args' = map (cmmExprConFold) args
                 in cmmMachOpFold mop args'
@@ -318,10 +318,10 @@ cmmExprConFold expr
                         "support the use of real registers for STG registers")
                         (text "Use an unregistered build instead" $$+$$
                         (PprCmm.pprExpr  expr))
-                    Right baseRegAddr 
-                        -> case mid of 
+                    Right baseRegAddr
+                        -> case mid of
                             BaseReg -> cmmExprConFold baseRegAddr
-                            _other  -> cmmExprConFold 
+                            _other  -> cmmExprConFold
                                            (CmmLoad baseRegAddr (globalRegType mid))
 
             -- eliminate zero offsets
@@ -331,7 +331,7 @@ cmmExprConFold expr
         CmmRegOff (CmmGlobal mid) offset
             -- RegOf leaves are just a shorthand form. If the reg maps
             -- to a real reg, we keep the shorthand, otherwise, we just
-            -- expand it and defer to the above code. 
+            -- expand it and defer to the above code.
             -> case get_GlobalReg_addr mid of
                     Left  _realreg -> pprPanic ("The LLVM Back-end doesn't " ++
                         "support the use of real registers for STG registers")

@@ -56,7 +56,7 @@ ppLlvmGlobal (var@(LMGlobalVar _ _ _), Nothing) =
 ppLlvmGlobal (var@(LMGlobalVar _ _ _), (Just stat)) =
   (text $ getName var) <+> (equals <+> (text $ show $ getLink var)
       <+> text "global") <+> (text $ show stat)
-              
+
 ppLlvmGlobal oth = error $ "Non Global var ppr as global! " ++ show oth
 
 ppLlvmGlobals :: [LMGlobal] -> Doc
@@ -67,7 +67,7 @@ ppLlvmConstants :: [LMConstant] -> Doc
 ppLlvmConstants cons = vcat $ map ppLlvmConstant cons
 
 ppLlvmConstant :: LMConstant -> Doc
-ppLlvmConstant (dst@(LMGlobalVar _ _ link),src) = 
+ppLlvmConstant (dst@(LMGlobalVar _ _ link),src) =
     ppAssignment dst $ text (show link) <+> text ("constant")
         <+> text (show src)
 
@@ -128,7 +128,7 @@ ppLlvmType (LMFunction t)
   = ppLlvmFunctionDecl t
 
 ppLlvmType _ = empty
-        
+
 
 ppLlvmStatement :: LlvmStatement -> Doc
 ppLlvmStatement stmt
@@ -163,29 +163,34 @@ ppLlvmExpression expr
 -- Print functions
 --------------------------------------------------------------------------------
 
--- FIX: Should always be a function pointer. So a global var of function type
+-- Should always be a function pointer. So a global var of function type
 -- (since globals are always pointers) or a local var of pointer function type.
 ppCall :: LlvmCallType -> LlvmVar -> [LlvmVar]-> Doc
-ppCall ct fptr vals = case getVarType fptr of
-    -- if pointer, unwrap
-    LMPointer _ ->
-        ppCall ct (pVarLower fptr) vals
+ppCall ct fptr vals = case fptr of
+                           --
+    -- if local var function pointer, unwrap
+    LMLocalVar _ (LMPointer (LMFunction d)) -> ppCall' d
 
     -- should be function type otherwise
-    LMFunction (LlvmFunctionDecl _ _ cc ret argTy params) ->
-        let tcall = if ct == TailCall then text "tail " else empty
-            ppValues = ppCommaJoin vals
-            ppArgTy = ppCommaJoin params <>
-                       (case argTy of
-                           VarArgs -> (text ", ...")
-                           FixedArgs -> empty)
-            fnty = space <> lparen <> ppArgTy <> rparen <> (text "*")
-        in  tcall <> (text "call") <+> (text $ show cc) <+> (text $ show ret)
-                <> fnty <+> (text $ getName fptr) <> lparen <+> ppValues
-                <+> rparen
+    LMGlobalVar _ (LMFunction d) _          -> ppCall' d
 
     -- not pointer or function, so error
-    _ -> error "ppCall called with non LMFunction type!"
+    _other -> error $ "ppCall called with non LMFunction type!\nMust be "
+                ++ " called with either global var of function type or "
+                ++ "local var of pointer function type."
+
+    where
+        ppCall' (LlvmFunctionDecl _ _ cc ret argTy params) =
+            let tc = if ct == TailCall then text "tail " else empty
+                ppValues = ppCommaJoin vals
+                ppArgTy = ppCommaJoin params <>
+                           (case argTy of
+                               VarArgs -> (text ", ...")
+                               FixedArgs -> empty)
+                fnty = space <> lparen <> ppArgTy <> rparen <> (text "*")
+            in  tc <> (text "call") <+> (text $ show cc) <+> (text $ show ret)
+                    <> fnty <+> (text $ getName fptr) <> lparen <+> ppValues
+                    <+> rparen
 
 
 ppMachOp :: LlvmMachOp -> LlvmVar -> LlvmVar -> Doc
@@ -227,20 +232,19 @@ ppCast op from to =
 
 ppMalloc :: LlvmType -> Int -> Doc
 ppMalloc tp amount =
--- FIX: shouldn't use fix 32bit word size
-  (text "malloc") <+> (text $ show tp) <> (text ", i32") <+> (text $ show amount)
+  (text "malloc") <+> (text $ show tp) <> comma <+> (text $ show llvmWord)
+      <+> (text $ show amount)
 
 
 ppAlloca :: LlvmType -> Int -> Doc
 ppAlloca tp amount =
--- FIX: shouldn't use fix 32bit word size
-  (text "alloca") <+> (text $ show tp) <> (text ", i32") <+> (text $ show amount)
+  (text "alloca") <+> (text $ show tp) <> comma <+> (text $ show llvmWord)
+      <+> (text $ show amount)
 
 
 ppGetElementPtr :: LlvmVar -> [Int] -> Doc
 ppGetElementPtr ptr idx =
--- FIX: shouldn't use fix 32bit word size
-  let indexes = hcat $ map (((text ", i32") <+>) . text . show) idx
+  let indexes = hcat $ map ((comma <+> (text $ show llvmWord) <+>) . text . show) idx
   in (text "getelementptr") <+> (text $ show ptr) <> indexes
 
 
@@ -258,7 +262,7 @@ ppBranchIf :: LlvmVar -> LlvmVar -> LlvmVar -> Doc
 ppBranchIf cond trueT falseT
   = (text "br") <+> (text $ show cond) <> comma <+> (text $ show trueT) <> comma
         <+> (text $ show falseT)
-        
+
 
 ppPhi :: LlvmType -> [(LlvmVar,LlvmVar)] -> Doc
 ppPhi tp preds =
