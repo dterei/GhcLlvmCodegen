@@ -1,52 +1,55 @@
 Possible Problems
 ~~~~~~~~~~~~~~~~~
 
+ - Do I need to specify the data layout?
+
  - See GHC trac ticket #1852. Floats are padded to word size (4 extra bytes
  on a 64 bit machine) by putting an appropriate CmmLit before them. On fasm
  this is nessecary and forces the NCG to produce correct code. On viaC, this
  isn't nessecary so it strips this padding out. What approach does llvm need?
 
+ - Should I be using FiniteMap instead of Data.Map?
+
  - Can't seem to find any evidence of pointer tagging. Is it still used?
 
  - Do I need to handle the GcPtr CmmType differently from just a bit type?
-
- - Should I be using FiniteMap instead of Data.Map?
 
  - SPARC/CodeGen/Gen32.hs seems to have a few special cases for CmmMachOp.
  Perhaps these should also be handled in LLVM to improve performance?
 
  - tail call only supported on x86/x86-64 and PowerPC. SPARC?
 
- - Do I need to specify the data layout?
-
 
 Todo
 ~~~~
 
- - Improve Type saftey of LLVM module (e.g split out pointers to own data type,
- to limit where they can be used). More type checking in ppr stage.
+ - Add optimisation pass.
 
- - Use OrdList instead of [].
+ - Get working with registered build.
+
+ - look into lto/gold.
 
  - Use a new Monad instead of passing LlvmEnv around everywhere.
+
+ - Use OrdList instead of [].
 
  - Look at using LLVM intrinsic functions. There are a few math functions.
  Also, there is a smul_overflow detect function.
 
+ - Improve Type saftey of LLVM module (e.g split out pointers to own data type,
+ to limit where they can be used). More type checking in ppr stage.
+
  - Rearrange some functions and files better.
 
- - Add optimisation pass.
-
- - look into lto/gold.
-
  - Look at merging some of code with NCG.
+
 
 BUGS
 ~~~~
 
+ - ghc-stage2 built with llvm segaults.
+
  - Bug with lists of floats ([Float]). Think to do with incorrect size since
  a list of doubles works fine. See ghc bug $1852.
  Update: No, bug in ghc itself, not my back-end. Update to HEAD.
-
- - ghc-stage2 built with llvm segaults.
 
