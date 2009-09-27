@@ -139,7 +139,7 @@ cmmLlvmGen dflags us env cmm
     let (fixed_cmm, usFix) = initUs us $ fixAssignsTop cmm
 
     -- cmm to cmm optimisations
-    let opt_cmm = cmmToCmm dflags fixed_cmm
+    let opt_cmm = cmmToCmm fixed_cmm
 
     dumpIfSet_dyn dflags Opt_D_dump_opt_cmm "Optimised Cmm"
         (pprCmm $ Cmm [opt_cmm])
@@ -234,9 +234,9 @@ Here we do:
       Hp ==>  *(BaseReg + 34) ).
 -}
 
-cmmToCmm :: DynFlags -> RawCmmTop -> RawCmmTop
-cmmToCmm _ top@(CmmData _ _) = top
-cmmToCmm dflags (CmmProc info lbl params (ListGraph blocks)) =
+cmmToCmm :: RawCmmTop -> RawCmmTop
+cmmToCmm top@(CmmData _ _) = top
+cmmToCmm (CmmProc info lbl params (ListGraph blocks)) =
     let blocks' = map cmmBlockConFold (cmmMiniInline blocks)
     in CmmProc info lbl params (ListGraph blocks')
 
@@ -281,9 +281,9 @@ cmmStmtConFold stmt
                           CmmComment (mkFastString ("deleted: " ++ 
                               showSDoc (pprStmt stmt)))
 
-                      CmmLit (CmmInt n _) -> CmmBranch dest
+                      CmmLit (CmmInt _ _) -> CmmBranch dest
 
-                      other -> CmmCondBranch test' dest
+                      _other -> CmmCondBranch test' dest
 
         CmmSwitch expr ids
             -> let expr' = cmmExprConFold expr
@@ -314,14 +314,14 @@ cmmExprConFold expr
             -- and for all others we generate an indirection to its
             -- location in the register table.
             -> case get_GlobalReg_addr mid of
-                    Left  realreg -> pprPanic ("The LLVM Back-end doesn't " ++
+                    Left  _realreg -> pprPanic ("The LLVM Back-end doesn't " ++
                         "support the use of real registers for STG registers")
                         (text "Use an unregistered build instead" $$+$$
                         (PprCmm.pprExpr  expr))
                     Right baseRegAddr 
                         -> case mid of 
                             BaseReg -> cmmExprConFold baseRegAddr
-                            other   -> cmmExprConFold 
+                            _other  -> cmmExprConFold 
                                            (CmmLoad baseRegAddr (globalRegType mid))
 
             -- eliminate zero offsets
@@ -333,11 +333,11 @@ cmmExprConFold expr
             -- to a real reg, we keep the shorthand, otherwise, we just
             -- expand it and defer to the above code. 
             -> case get_GlobalReg_addr mid of
-                    Left  realreg -> pprPanic ("The LLVM Back-end doesn't " ++
+                    Left  _realreg -> pprPanic ("The LLVM Back-end doesn't " ++
                         "support the use of real registers for STG registers")
                         (text "Use an unregistered build instead" $$+$$
                         (PprCmm.pprExpr  expr))
-                    Right baseRegAddr
+                    Right _baseRegAddr
                         -> cmmExprConFold (CmmMachOp (MO_Add wordWidth) [
                                 CmmReg (CmmGlobal mid),
                                 CmmLit (CmmInt (fromIntegral offset)
