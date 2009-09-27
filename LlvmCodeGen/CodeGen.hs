@@ -272,11 +272,14 @@ genCall env target res args ret = do
     
     (env2, fptr, stmts2, top2) <- getFunPtr target
 
+    let retStmt | ccTy == TailCall = [Return (LMLocalVar "void" LMVoid)]
+                | otherwise        = []
+
     -- make the actual call
     case retTy of
         LMVoid -> do
             let s1 = Expr $ Call ccTy fptr argVars
-            return (env2, stmts1 ++ stmts2 ++ [s1], top1 ++ top2)
+            return (env2, stmts1 ++ stmts2 ++ [s1] ++ retStmt, top1 ++ top2)
 
         _ -> do
             let (creg, _) = ret_reg res
@@ -285,8 +288,8 @@ genCall env target res args ret = do
             if retTy == pLower (getVarType vreg)
                 then do
                     let s2 = Store v1 vreg
-                    return (env3, stmts1 ++ stmts2 ++ stmts3 ++ [s1,s2],
-                            top1 ++ top2 ++ top3)
+                    return (env3, stmts1 ++ stmts2 ++ stmts3 ++ [s1,s2] 
+                            ++ retStmt, top1 ++ top2 ++ top3)
                 else do
                     let ty = pLower $ getVarType vreg
                     let op = case ty of
@@ -298,8 +301,8 @@ genCall env target res args ret = do
 
                     (v2, s2) <- doExpr ty $ Cast op v1 ty
                     let s3 = Store v2 vreg
-                    return (env3, stmts1 ++ stmts2 ++ stmts3 ++ [s1,s2,s3],
-                            top1 ++ top2 ++ top3)
+                    return (env3, stmts1 ++ stmts2 ++ stmts3 ++ [s1,s2,s3]
+                            ++ retStmt, top1 ++ top2 ++ top3)
                 
 
 -- Conversion of call arguments.
