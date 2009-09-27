@@ -12,6 +12,7 @@ import LlvmCodeGen.Base
 import BlockId
 import CLabel
 import Cmm
+import qualified PprCmm
 
 import BasicTypes
 import FastString
@@ -20,6 +21,7 @@ import Outputable ( ppr )
 import qualified Outputable
 import UniqSupply
 import Unique
+import Util
 
 import qualified Data.Map as Map
 
@@ -47,13 +49,17 @@ genLlvmProc env (CmmProc info lbl params (ListGraph blocks))
 -- Block code generation
 --
 
--- | Generate code for a list of blocks. Should all be in same procedure.
+-- | Generate code for a list of blocks that make up a complete procedure.
 basicBlocksCodeGen :: LlvmEnv
                    -> [CmmBasicBlock]
                    -> ( [LlvmBasicBlock] , [LlvmCmmTop] )
                    -> UniqSM (LlvmEnv, [LlvmBasicBlock] , [LlvmCmmTop] )
 basicBlocksCodeGen env ([]) (blocks, tops)
-  = return (env, blocks, tops)
+  = do let (blocks', allocs) = mapAndUnzip dominateAllocs blocks
+       let allocs' = concat allocs
+       let ((BasicBlock id fstmts):rblocks) = blocks'
+       let fblocks = (BasicBlock id (allocs' ++ fstmts)):rblocks
+       return (env, fblocks, tops)
 
 basicBlocksCodeGen env (block:blocks) (lblocks', ltops')
   = do (env', lb, lt) <- basicBlockCodeGen env block
@@ -69,6 +75,20 @@ basicBlockCodeGen ::  LlvmEnv
 basicBlockCodeGen env (BasicBlock id stmts)
   = do (env', instrs, top) <- stmtsToInstrs env stmts ([], [])
        return (env', [(BasicBlock id instrs)], top)
+
+
+-- | Allocations need to be extracted so they can be moved to the entry
+-- of a function to make sure they dominate all posible paths in the CFG.
+dominateAllocs :: LlvmBasicBlock -> (LlvmBasicBlock, [LlvmStatement])
+dominateAllocs (BasicBlock id stmts)
+  = (BasicBlock id allstmts, allallocs)
+    where
+        (allstmts, allallocs) = foldl split ([],[]) stmts
+        split (stmts', allocs) s@(Assignment _ (Alloca _ _)) 
+            = (stmts', allocs ++ [s])
+        split (stmts', allocs) other
+            = (stmts' ++ [other], allocs)
+    
 
 -- -----------------------------------------------------------------------------
 -- CmmStmt code generation
@@ -152,9 +172,8 @@ genCall env (CmmPrim MO_WriteBarrier) _ _ _ = do
     return (env', [s1], tops)
 
     where
-        lmTrue, lmFalse :: LlvmVar
+        lmTrue :: LlvmVar
         lmTrue  = LMLitVar $ LMIntLit (-1) i1
-        lmFalse = LMLitVar $ LMIntLit 0 i1
 
 -- Handle all other foreign calls and prim ops.
 genCall env target res args ret = do
@@ -623,8 +642,19 @@ genMachOp env opt op [x, y] = case op of
                     (v1, s1) <- doExpr (ty vx) $ binOp vx vy
                     return (env2, v1, stmts1 ++ stmts2 ++ [s1], top1 ++ top2)
                 else do
-                    panic $ "genMachOp: comparison between different types! ("
-                            ++ show vx ++ ", " ++ show vy ++ ")" 
+                    let dx = Comment $ lines.show.llvmSDoc.PprCmm.pprExpr $ x
+                    let dy = Comment $ lines.show.llvmSDoc.PprCmm.pprExpr $ y
+                    (v1, s1) <- doExpr (ty vx) $ binOp vx vy
+                    return (env2, v1, stmts1 ++ stmts2 ++ [dx,dy,s1], top1 ++ top2)
+
+                    -- let o = case binOp vx vy of
+                    --         Compare op _ _ -> show op
+                    --         LlvmOp  op _ _ -> show op
+                    --         _              -> "unknown"
+                    -- panic $ "genMachOp: comparison between different types! ("
+                    --         ++ o ++ " "++ show vx ++ ", " ++ show vy ++ ")"
+                    --         ++ "\ne1: " ++ (show.llvmSDoc.PprCmm.pprExpr $ x)
+                    --         ++ "\ne2: " ++ (show.llvmSDoc.PprCmm.pprExpr $ y)
 
         -- | Need to use EOption here as Cmm expects word size results from
         -- comparisons while llvm return i1. Need to extend to llvmWord type
