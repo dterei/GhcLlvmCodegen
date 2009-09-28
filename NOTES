@@ -33,6 +33,10 @@ Todo
 
  - Use OrdList instead of [].
 
+ - Should be able to put all CmmProc and CmmData labels in environment at start
+ and after that, can print out LLVM IR as I generate it for each data and proc
+ instead of storing.
+
  - Look at using LLVM intrinsic functions. There are a few math functions.
  Also, there is a smul_overflow detect function.
 
