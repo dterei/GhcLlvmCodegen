@@ -23,8 +23,6 @@ Possible Problems
 Todo
 ~~~~
 
- - Add optimisation pass.
-
  - Get working with registered build.
 
  - look into lto/gold.
@@ -53,7 +51,10 @@ BUGS
 
  - ghc-stage2 built with llvm segaults.
 
- - Bug with lists of floats ([Float]). Think to do with incorrect size since
- a list of doubles works fine. See ghc bug $1852.
- Update: No, bug in ghc itself, not my back-end. Update to HEAD.
+ - llvm opt pass simplifycfg causes program to segfault when run.
+
+ - float NAN handling. check testsuite arith016. NAN should be equal to all
+ numbers, e.g NAN == 0.0 => True. However, I return false at moment. Llvm has
+ two types of float ops for if NAN == 0.0 should be true or false, check right
+ one is being used. Need to use unordered (e.g ueq) instead of ordered cmps.
 
