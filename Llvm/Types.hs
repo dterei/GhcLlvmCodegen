@@ -22,22 +22,30 @@ import Numeric
 -- | Llvm compare functions, parameter of the 'Expression_Compare' constructor
 --   of type 'Expression'
 data LlvmCmpOp
+  -- | Signed and Unsigned equality
   = LM_CMP_Eq  -- Equality
   | LM_CMP_Ne  -- Non equality
-  | LM_CMP_Ugt -- Unsigned greater then
-  | LM_CMP_Uge -- Unsigned greater then or equal
-  | LM_CMP_Ult -- Unsigned less then
-  | LM_CMP_Ule -- Unsigned less then or equal
-  | LM_CMP_Sgt -- Signed greater then
-  | LM_CMP_Sge -- Signed greater then or equal
-  | LM_CMP_Slt -- Signed less then
-  | LM_CMP_Sle -- Signed less then or equal
-  | LM_CMP_Feq -- Float equality
-  | LM_CMP_Fne -- Float non equality
-  | LM_CMP_Fgt -- Float greater then
-  | LM_CMP_Fge -- Float greater then or equal
-  | LM_CMP_Flt -- Float less then
-  | LM_CMP_Fle -- Float less then or equal
+
+  -- | Unsigned comparisons.
+  | LM_CMP_Ugt -- greater then
+  | LM_CMP_Uge -- greater then or equal
+  | LM_CMP_Ult -- less then
+  | LM_CMP_Ule -- less then or equal
+
+  -- | Signed comparisons.
+  | LM_CMP_Sgt
+  | LM_CMP_Sge
+  | LM_CMP_Slt
+  | LM_CMP_Sle
+
+  -- | Float comparisons. GHC uses unordered float comparison, that is any
+  -- comparison involving a NAN returns True.
+  | LM_CMP_Feq
+  | LM_CMP_Fne
+  | LM_CMP_Fgt
+  | LM_CMP_Fge
+  | LM_CMP_Flt
+  | LM_CMP_Fle
   deriving (Eq)
 
 instance Show LlvmCmpOp where
@@ -51,12 +59,12 @@ instance Show LlvmCmpOp where
   show LM_CMP_Sge = "sge"
   show LM_CMP_Slt = "slt"
   show LM_CMP_Sle = "sle"
-  show LM_CMP_Feq = "oeq"
-  show LM_CMP_Fne = "one"
-  show LM_CMP_Fgt = "ogt"
-  show LM_CMP_Fge = "oge"
-  show LM_CMP_Flt = "olt"
-  show LM_CMP_Fle = "ole"
+  show LM_CMP_Feq = "ueq"
+  show LM_CMP_Fne = "une"
+  show LM_CMP_Fgt = "ugt"
+  show LM_CMP_Fge = "uge"
+  show LM_CMP_Flt = "ult"
+  show LM_CMP_Fle = "ule"
 
 
 -- | Llvm binary operators, parameter of the 'Expression_MachOp' constructor of type
