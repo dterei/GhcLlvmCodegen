@@ -202,11 +202,9 @@ fixAssigns stmts =
     returnUs (concat stmtss)
 
 fixAssign :: CmmStmt -> UniqSM [CmmStmt]
-fixAssign (CmmAssign (CmmGlobal reg) src)
-  | Left expr <- reg_or_addr
-  = pprPanic ("The LLVM Back-end doesn't support the use of real registers for"
-        ++ " STG registers") (text "Use an unregistered build instead"
-        $$+$$ (PprCmm.pprExpr  expr))
+fixAssign e@(CmmAssign (CmmGlobal reg) src)
+  | Left _realreg <- reg_or_addr
+  = returnUs [e]
   | Right baseRegAddr <- reg_or_addr
   = returnUs [CmmStore baseRegAddr src]
           -- Replace register leaves with appropriate StixTrees for
@@ -314,10 +312,7 @@ cmmExprConFold expr
             -- and for all others we generate an indirection to its
             -- location in the register table.
             -> case get_GlobalReg_addr mid of
-                    Left  _realreg -> pprPanic ("The LLVM Back-end doesn't " ++
-                        "support the use of real registers for STG registers")
-                        (text "Use an unregistered build instead" $$+$$
-                        (PprCmm.pprExpr  expr))
+                    Left  _realreg -> expr
                     Right baseRegAddr
                         -> case mid of
                             BaseReg -> cmmExprConFold baseRegAddr
@@ -333,10 +328,7 @@ cmmExprConFold expr
             -- to a real reg, we keep the shorthand, otherwise, we just
             -- expand it and defer to the above code.
             -> case get_GlobalReg_addr mid of
-                    Left  _realreg -> pprPanic ("The LLVM Back-end doesn't " ++
-                        "support the use of real registers for STG registers")
-                        (text "Use an unregistered build instead" $$+$$
-                        (PprCmm.pprExpr  expr))
+                    Left  _realreg -> expr
                     Right _baseRegAddr
                         -> cmmExprConFold (CmmMachOp (MO_Add wordWidth) [
                                 CmmReg (CmmGlobal mid),
@@ -346,13 +338,6 @@ cmmExprConFold expr
         other
             -> other
 
-
--- -----------------------------------------------------------------------------
--- Misc
-
--- | $+$ for SDoc with an blank line between
-($$+$$) :: SDoc -> SDoc -> SDoc
-p $$+$$ q = p $+$ empty $+$ q
 
 \end{code}
 

@@ -22,7 +22,7 @@ module Llvm (
         LlvmVar(..), LlvmStatic(..), LlvmLit(..), LlvmType(..),
 
         LMGlobal, LMString, LMConstant,
-        i64, i32, i16, i8, i1, llvmWord,
+        i64, i32, i16, i8, i1, llvmWord, llvmWordPtr,
         isGlobal, getLitType, getLit, getName, getPlainName, getVarType,
         getStatType, getGlobalVar, getGlobalType, pVarLower, pLift, pLower,
         isInt, isFloat, isPointer, llvmWidthInBits,

@@ -382,6 +382,10 @@ i1   = LMInt   1
 llvmWord :: LlvmType
 llvmWord = LMInt (wORD_SIZE * 8)
 
+llvmWordPtr :: LlvmType
+llvmWordPtr = pLift llvmWord
+
+
 -- | Add a pointer indirection to the supplied type. 'Label' and 'Void'
 --  cannot be lifted.
 pLift :: LlvmType -> LlvmType

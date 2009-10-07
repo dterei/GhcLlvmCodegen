@@ -8,6 +8,7 @@ module LlvmCodeGen.CodeGen ( genLlvmProc ) where
 
 import Llvm
 import LlvmCodeGen.Base
+import LlvmCodeGen.Regs
 
 import BlockId
 import CLabel
@@ -58,8 +59,15 @@ basicBlocksCodeGen env ([]) (blocks, tops)
   = do let (blocks', allocs) = mapAndUnzip dominateAllocs blocks
        let allocs' = concat allocs
        let ((BasicBlock id fstmts):rblocks) = blocks'
-       let fblocks = (BasicBlock id (allocs' ++ fstmts)):rblocks
+       let fblocks = (BasicBlock id (stgRegs ++ allocs' ++ fstmts)):rblocks
        return (env, fblocks, tops)
+  where
+        stgRegs = concat [getReg lmBaseReg lmBaseArg, getReg lmSpReg lmSpArg,
+                            getReg lmHpReg lmHpArg, getReg lmR1Reg lmR1Arg]
+        getReg reg arg =
+            let alloc = Assignment reg $ Alloca (pLower $ getVarType reg) 1
+                store = Store arg reg
+            in [alloc, store]
 
 basicBlocksCodeGen env (block:blocks) (lblocks', ltops')
   = do (env', lb, lt) <- basicBlockCodeGen env block
@@ -129,6 +137,8 @@ stmtToInstrs env stmt = case stmt of
     CmmCondBranch arg id -> genCondBranch env arg id
     CmmSwitch arg ids    -> genSwitch env arg ids
 
+    --TODO: Registered!
+ 
     -- Foreign Call
     CmmCall target res args _ ret
         -> genCall env target res args ret
@@ -284,7 +294,7 @@ genCall env target res args ret = do
         _ -> do
             let (creg, _) = ret_reg res
             (v1, s1) <- doExpr retTy $ Call ccTy fptr argVars
-            let (env3, vreg, stmts3, top3) = genCmmReg env2 (CmmLocal creg)
+            let (env3, vreg, stmts3, top3) = getCmmReg env2 (CmmLocal creg)
             if retTy == pLower (getVarType vreg)
                 then do
                     let s2 = Store v1 vreg
@@ -392,10 +402,15 @@ genJump env expr = do
          ty -> panic $ "genJump: Expr is of bad type for function call! ("
                      ++ show (ty) ++ ")"
 
+    (p1, sp1) <- doExpr (pLower $ getVarType  lmBaseReg) $ Load lmBaseReg
+    (p2, sp2) <- doExpr (pLower $ getVarType  lmSpReg)   $ Load lmSpReg
+    (p3, sp3) <- doExpr (pLower $ getVarType  lmHpReg)   $ Load lmHpReg
+    (p4, sp4) <- doExpr (pLower $ getVarType  lmR1Reg)   $ Load lmR1Reg
+
     (v1, s1) <- doExpr (pLift fty) $ Cast cast vf (pLift fty)
-    let s2 = Expr $ Call TailCall v1 []
+    let s2 = Expr $ Call TailCall v1 [p1, p2, p3, p4]
     let s3 = Return (LMLocalVar "void" LMVoid)
-    return (env', stmts ++ [s1,s2,s3], top)
+    return (env', stmts ++ [s1,sp1,sp2,sp3,sp4,s2,s3], top)
 
 
 -- | CmmAssign operation
@@ -403,13 +418,8 @@ genJump env expr = do
 -- We use stack allocated variables for CmmReg. The optimiser will replace
 -- these with registers when possible.
 genAssign :: LlvmEnv -> CmmReg -> CmmExpr -> UniqSM StmtData
-genAssign _ (CmmGlobal _) _
- = panic $ "genAssign: The LLVM Back-end doesn't support the use of real "
-        ++ "registers for STG registers. Use an unregistered build instead. "
-        ++ "They should have been removed earlier in the code generation!"
-
 genAssign env reg val = do
-    let (env1, vreg, stmts1, top1) = genCmmReg env reg
+    let (env1, vreg, stmts1, top1) = getCmmReg env reg
     (env2, vval, stmts2, top2) <- exprToVar env1 val
     let s1 = Store vval vreg
     return (env2, stmts1 ++ stmts2 ++ [s1], top1 ++ top2)
@@ -517,9 +527,9 @@ exprToVarOpt env opt e = case e of
         -> genCmmLoad env e' ty
 
     -- Cmmreg in expression is the value, so must load. If you want actual
-    -- reg pointer, call genCmmReg directly.
+    -- reg pointer, call getCmmReg directly.
     CmmReg r -> do
-        let (env', vreg, stmts, top) = genCmmReg env r
+        let (env', vreg, stmts, top) = getCmmReg env r
         (v1, s1) <- doExpr (pLower $ getVarType vreg) $ Load vreg
         return (env', v1, stmts ++ [s1], top)
 
@@ -748,25 +758,24 @@ genCmmLoad env e ty = do
 --
 -- We allocate CmmReg on the stack. This avoids having to map a CmmReg to an
 -- equivalent SSA form and avoids having to deal with Phi node insertion.
--- This is also the approach llvm-gcc takes for C variables. The LLVM optimiser
--- can optimise this code to Phi form.
-genCmmReg :: LlvmEnv -> CmmReg -> ExprData
-genCmmReg env r@(CmmLocal (LocalReg un _))
-  = let name = uniqToStr un
-        oty  = Map.lookup name env
+-- This is also the approach recommended by llvm developers.
+getCmmReg :: LlvmEnv -> CmmReg -> ExprData
+getCmmReg env r@(CmmLocal (LocalReg un _))
+  = let name   = uniqToStr un
+        exists = Map.lookup name env
 
         (newv, stmts) = allocReg r
         -- FIX: Should remove from env or put in proc only env. This env is
         -- global to module and shouldn't contain local vars. Could also strip
         -- local vars from env at end of proc generation.
         nenv = Map.insert name (pLower $ getVarType newv) env
-    in case oty of
+    in case exists of
             Just ety -> (env, (LMLocalVar name $ pLift ety), [], [])
             Nothing  -> (nenv, newv, stmts, [])
 
-genCmmReg _ _ = panic $ "genCmmReg: Global reg encountered! Registered build"
-                    ++ " not supported!"
-
+getCmmReg env (CmmGlobal g)
+  = let lg = getLlvmStgReg g
+    in (env, lg, [], [])
 
 -- | Allocate a CmmReg on the stack
 allocReg :: CmmReg -> (LlvmVar, [LlvmStatement])
@@ -776,8 +785,8 @@ allocReg (CmmLocal (LocalReg un ty))
         alc = Alloca ty' 1
     in (var, [Assignment var alc])
 
-allocReg _ = panic $ "allocReg: Global reg encountered! Registered build not"
-                    ++ " supported!"
+allocReg _ = panic $ "allocReg: Global reg encountered! Global registers should"
+                    ++ " have been handled elsewhere!"
 
 
 -- | Generate code for a literal

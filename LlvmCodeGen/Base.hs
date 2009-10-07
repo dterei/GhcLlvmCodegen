@@ -39,6 +39,7 @@ import qualified Data.Map as Map
 type LlvmCmmTop = GenCmmTop LlvmData [CmmStatic] (ListGraph LlvmStatement)
 type LlvmBasicBlock = GenBasicBlock LlvmStatement
 
+-- (data label, data type, unresovled data)
 type LlvmUnresData = (CLabel, LlvmType, [UnresStatic])
 
 -- (data, type aliases)
@@ -74,7 +75,8 @@ widthToLlvmInt w = LMInt $ widthInBits w
 llvmFunTy :: LlvmType
 llvmFunTy
   = LMFunction $
-        LlvmFunctionDecl "a" ExternallyVisible CC_Fastcc LMVoid FixedArgs []
+        LlvmFunctionDecl "a" ExternallyVisible CC_Fastcc LMVoid FixedArgs
+            [llvmWord, llvmWord, llvmWord, llvmWord]
 
 -- | Llvm Function signature
 llvmFunSig :: CLabel -> LlvmLinkageType -> LlvmFunctionDecl
