@@ -20,6 +20,7 @@ module LlvmCodeGen.Base (
 #include "HsVersions.h"
 
 import Llvm
+import LlvmCodeGen.Regs
 
 import BlockId
 import CLabel
@@ -76,13 +77,14 @@ llvmFunTy :: LlvmType
 llvmFunTy
   = LMFunction $
         LlvmFunctionDecl "a" ExternallyVisible CC_Fastcc LMVoid FixedArgs
-            [llvmWord, llvmWord, llvmWord, llvmWord]
+            (Left [llvmWord, llvmWord, llvmWord, llvmWord])
 
 -- | Llvm Function signature
 llvmFunSig :: CLabel -> LlvmLinkageType -> LlvmFunctionDecl
 llvmFunSig lbl link
   = let n = strCLabel_llvm lbl
-    in LlvmFunctionDecl n link CC_Fastcc LMVoid FixedArgs []
+    in LlvmFunctionDecl n link CC_Fastcc LMVoid FixedArgs
+        (Right [lmBaseArg, lmSpArg, lmHpArg, lmR1Arg])
 
 -- | Pointer width
 llvmPtrBits :: Int

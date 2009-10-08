@@ -137,8 +137,6 @@ stmtToInstrs env stmt = case stmt of
     CmmCondBranch arg id -> genCondBranch env arg id
     CmmSwitch arg ids    -> genSwitch env arg ids
 
-    --TODO: Registered!
- 
     -- Foreign Call
     CmmCall target res args _ ret
         -> genCall env target res args ret
@@ -167,7 +165,7 @@ genCall env (CmmPrim MO_WriteBarrier) _ _ _ = do
                 CC_Ccc
                 LMVoid
                 FixedArgs
-                [i1, i1, i1, i1, i1]
+                (Left [i1, i1, i1, i1, i1])
     let fty = LMFunction funSig
 
     let fv   = LMGlobalVar fname fty (funcLinkage funSig)
@@ -201,6 +199,7 @@ genCall env target res args ret = do
                         ++ " 0 or 1, given " ++ show (length t) ++ "."
 
     -- tail call?
+    -- TODO: Registered.
     let callType CmmMayReturn    = StdCall
         callType CmmNeverReturns = TailCall
 
@@ -222,7 +221,7 @@ genCall env target res args ret = do
 
     -- fun types
     let ccTy  = callType ret
-    let argTy = map arg_type args
+    let argTy = Left $ map arg_type args
     let retTy = ret_type res
     let funTy name = LMFunction $
             LlvmFunctionDecl name ExternallyVisible lmconv retTy FixedArgs argTy
@@ -378,7 +377,7 @@ cmmPrimOpFunctions mop
 
     a -> panic $ "cmmPrimOpFunctions: Unknown callish op! (" ++ show a ++ ")"
 
-
+    
 -- | Tail function calls
 --
 genJump :: LlvmEnv -> CmmExpr -> UniqSM StmtData
@@ -386,9 +385,11 @@ genJump :: LlvmEnv -> CmmExpr -> UniqSM StmtData
 -- Call to known function
 genJump env (CmmLit (CmmLabel lbl)) = do
     (env', vf, stmts, top) <- getHsFunc env lbl
-    let s1 = Expr $ Call TailCall vf []
-    let s2 = Return (LMLocalVar "void" LMVoid)
-    return (env', stmts ++ [s1,s2], top)
+    (stgRegs, stgStmts) <- loadStgRegs
+    let s1  = Expr $ Call TailCall vf stgRegs
+    let s2  = Return (LMLocalVar "void" LMVoid)
+    return (env', stmts ++ stgStmts ++ [s1,s2], top)
+
 
 -- Call to unknown function / address
 genJump env expr = do
@@ -402,15 +403,11 @@ genJump env expr = do
          ty -> panic $ "genJump: Expr is of bad type for function call! ("
                      ++ show (ty) ++ ")"
 
-    (p1, sp1) <- doExpr (pLower $ getVarType  lmBaseReg) $ Load lmBaseReg
-    (p2, sp2) <- doExpr (pLower $ getVarType  lmSpReg)   $ Load lmSpReg
-    (p3, sp3) <- doExpr (pLower $ getVarType  lmHpReg)   $ Load lmHpReg
-    (p4, sp4) <- doExpr (pLower $ getVarType  lmR1Reg)   $ Load lmR1Reg
-
     (v1, s1) <- doExpr (pLift fty) $ Cast cast vf (pLift fty)
-    let s2 = Expr $ Call TailCall v1 [p1, p2, p3, p4]
+    (stgRegs, stgStmts) <- loadStgRegs
+    let s2 = Expr $ Call TailCall v1 stgRegs
     let s3 = Return (LMLocalVar "void" LMVoid)
-    return (env', stmts ++ [s1,sp1,sp2,sp3,sp4,s2,s3], top)
+    return (env', stmts ++ [s1] ++ stgStmts ++ [s2,s3], top)
 
 
 -- | CmmAssign operation
@@ -849,6 +846,16 @@ genLit _ CmmHighStackMark
 -- -----------------------------------------------------------------------------
 -- Misc
 --
+
+-- | Load stg registers
+loadStgRegs :: UniqSM ([LlvmVar], [LlvmStatement])
+loadStgRegs = do
+    (p1, sp1) <- doExpr (pLower $ getVarType  lmBaseReg) $ Load lmBaseReg
+    (p2, sp2) <- doExpr (pLower $ getVarType  lmSpReg)   $ Load lmSpReg
+    (p3, sp3) <- doExpr (pLower $ getVarType  lmHpReg)   $ Load lmHpReg
+    (p4, sp4) <- doExpr (pLower $ getVarType  lmR1Reg)   $ Load lmR1Reg
+    return ([p1, p2, p3, p4], [sp1, sp2, sp3, sp4])
+
 
 -- | Get a function pointer to the CLabel specified.
 --

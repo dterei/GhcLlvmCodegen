@@ -45,6 +45,9 @@ Todo
 
  - Look at merging some of code with NCG.
 
+ - handling of llvmvar or llvmtype for func sig isnt nice. Whole func sig handling
+ could be better really.
+
 
 BUGS
 ~~~~

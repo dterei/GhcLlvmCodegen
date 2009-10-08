@@ -99,7 +99,7 @@ ppLlvmFuncDecSig (LlvmFunctionDecl name link cc retTy argTy params)
   = let linkTxt = show link
         linkDoc   | linkTxt == "" = empty
                   | otherwise     = (text linkTxt) <> space
-        ppParams = ppCommaJoin params <>
+        ppParams = either ppCommaJoin ppCommaJoin params <>
                     (case argTy of
                         VarArgs -> (text ", ...")
                         FixedArgs -> empty)
@@ -183,7 +183,7 @@ ppCall ct fptr vals = case fptr of
         ppCall' (LlvmFunctionDecl _ _ cc ret argTy params) =
             let tc = if ct == TailCall then text "tail " else empty
                 ppValues = ppCommaJoin vals
-                ppArgTy = ppCommaJoin params <>
+                ppArgTy = either ppCommaJoin (\x -> ppCommaJoin $ map getVarType x) params <>
                            (case argTy of
                                VarArgs -> (text ", ...")
                                FixedArgs -> empty)

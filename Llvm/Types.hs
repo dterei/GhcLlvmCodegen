@@ -288,9 +288,9 @@ instance Show LlvmType where
   show (LMStruct tys  ) = "{" ++ (commaCat tys) ++ "}"
 
   show (LMFunction (LlvmFunctionDecl _ _ _ r VarArgs p))
-        = (show r) ++ " (" ++ (commaCat p) ++ ", ...)"
+        = (show r) ++ " (" ++ (either commaCat commaCat p) ++ ", ...)"
   show (LMFunction (LlvmFunctionDecl _ _ _ r FixedArgs p))
-        = (show r) ++ " (" ++ (commaCat p) ++ ")"
+        = (show r) ++ " (" ++ (either commaCat commaCat p) ++ ")"
 
   show (LMAlias s _   ) = "%" ++ s
 
@@ -453,23 +453,24 @@ llvmWidthInBits (LMAlias _ t)    = llvmWidthInBits t
 --    * funCc:      The calling convention of the function.
 --    * returnType: Type of the returned value
 --    * varargs:    ParameterListType indicating if this function uses varargs
---    * params:     Signature of the parameters
+--    * params:     Signature of the parameters, can be just types or full vars
+--                  if paramater names are requried.
 data LlvmFunctionDecl = LlvmFunctionDecl {
         decName       :: LMString,
         funcLinkage   :: LlvmLinkageType,
         funcCc        :: LlvmCallConvention,
         decReturnType :: LlvmType,
         decVarargs    :: LlvmParameterListType,
-        decParams     :: [LlvmType]
+        decParams     :: Either [LlvmType] [LlvmVar]
   }
 
 instance Show LlvmFunctionDecl where
   show (LlvmFunctionDecl n l c r VarArgs p)
         = (show l) ++ " " ++  (show c) ++ " " ++ (show r)
-            ++ " @" ++ n ++ "(" ++ (commaCat p) ++ ", ...)"
+            ++ " @" ++ n ++ "(" ++ (either commaCat commaCat p) ++ ", ...)"
   show (LlvmFunctionDecl n l c r FixedArgs p)
         = (show l) ++ " " ++  (show c) ++ " " ++ (show r)
-            ++ " @" ++ n ++ "(" ++ (commaCat p) ++ ")"
+            ++ " @" ++ n ++ "(" ++ (either commaCat commaCat p) ++ ")"
 
 instance Eq LlvmFunctionDecl where
   (LlvmFunctionDecl n1 l1 c1 r1 v1 p1) == (LlvmFunctionDecl n2 l2 c2 r2 v2 p2)
