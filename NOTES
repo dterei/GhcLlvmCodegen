@@ -1,3 +1,25 @@
+LLVM Back-end for GHC.
+
+Author: David Terei
+
+General Points
+~~~~~~~~~~~~~~
+
+ - Don't use the 'NoReturn' function attribute. It causes the llvm optimiser to
+ produce bad code as it replaces the following sequence of intructions:
+
+  tail call fastcc void (i32,i32,i32,i32)* %nnO( i32 %nnP,i32 %nnQ,i32 %nnR,i32 %nnS )
+  ret void
+
+ with:
+
+  tail call fastcc void (i32,i32,i32,i32)* %nnO( i32 %nnP,i32 %nnQ,i32 %nnR,i32 %nnS )
+  unreachable
+ 
+ which stops llc producing native code that actually tail calls and thus leads
+ to a runtime segfault / stack smash.
+
+
 Possible Problems
 ~~~~~~~~~~~~~~~~~
 
@@ -22,8 +44,6 @@ Possible Problems
 
 Todo
 ~~~~
-
- - Get working with registered build.
 
  - look into lto/gold.
 
@@ -50,8 +70,6 @@ BUGS
 ~~~~
 
  - ghc-stage2 built with llvm segaults.
-
- - llvm opt pass simplifycfg causes program to segfault when run.
 
  - float NAN handling. check testsuite arith016. NAN should be equal to all
  numbers, e.g NAN == 0.0 => True. However, I return false at moment. Llvm has

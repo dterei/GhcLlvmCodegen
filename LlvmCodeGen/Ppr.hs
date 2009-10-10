@@ -45,7 +45,7 @@ pprLlvmCmmTop dflags (CmmProc info lbl _ (ListGraph blocks))
                         then ExternallyVisible else Internal
             funDec = llvmFunSig lbl link
             lmblocks = map (\(BasicBlock id stmts) -> LlvmBlock (strBlockId_llvm id) stmts) blocks
-            fun = LlvmFunction funDec [NoUnwind, NoReturn] lmblocks
+            fun = LlvmFunction funDec [NoUnwind] lmblocks
         in ppLlvmFunction fun
     )
 
