@@ -18,8 +18,6 @@ import Cmm
 import DynFlags
 import Pretty
 
-import qualified Data.Map as Map
-
 -- ----------------------------------------------------------------------------
 -- Top level
 --
@@ -62,6 +60,6 @@ pprLlvmData _ (globals, types ) =
 pprCmmStatic :: DynFlags -> [CmmStatic] -> Doc
 pprCmmStatic dflags stat
   = let unres = genLlvmData dflags (Data,stat)
-        (_, ldata) = resolveLlvmData dflags Map.empty unres
+        (_, ldata) = resolveLlvmData dflags initLlvmEnv unres
     in pprLlvmData dflags ldata
 

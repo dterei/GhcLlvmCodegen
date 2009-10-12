@@ -24,8 +24,6 @@ import UniqSupply
 import Unique
 import Util
 
-import qualified Data.Map as Map
-
 -- -----------------------------------------------------------------------------
 -- Top-level of the llvm proc codegen
 --
@@ -169,13 +167,13 @@ genCall env (CmmPrim MO_WriteBarrier) _ _ _ = do
     let fty = LMFunction funSig
 
     let fv   = LMGlobalVar fname fty (funcLinkage funSig)
-    let tops = case Map.lookup fname env of
+    let tops = case funLookup fname env of
                     Just _  -> []
                     Nothing -> [CmmData Data [([],[fty])]]
 
     let args = [lmTrue, lmTrue, lmTrue, lmTrue, lmTrue]
     let s1 = Expr $ Call StdCall fv args
-    let env' = Map.insert fname fty env
+    let env' = funInsert fname fty env
 
     return (env', [s1], tops)
 
@@ -198,11 +196,6 @@ genCall env target res args ret = do
         ret_type t = panic $ "genCall: Too many return values! Can only handle"
                         ++ " 0 or 1, given " ++ show (length t) ++ "."
 
-    -- tail call?
-    -- TODO: Registered.
-    let callType CmmMayReturn    = StdCall
-        callType CmmNeverReturns = TailCall
-
     -- extract call convention
     let conv = case target of
             CmmCallee _ conv -> conv
@@ -219,15 +212,29 @@ genCall env target res args ret = do
             CmmCallConv  -> CC_Fastcc
             PrimCallConv -> CC_Ccc
 
+    -- stg reg handling
+    let stgArgTy = [llvmWord, llvmWord, llvmWord, llvmWord]
+    (stgRegs, stgStmts) <- case lmconv of
+            CC_Fastcc -> loadStgRegs
+            _other    -> return ([], [])
+
+    -- tail call?
+    let callTy CmmMayReturn = StdCall
+        callTy CmmNeverReturns
+                    | lmconv == CC_Fastcc = TailCall
+                    | otherwise = panic $ "genCall: wrong call conv for tail "
+                                        ++ " call! (" ++ show lmconv ++ ")"
+                               
     -- fun types
-    let ccTy  = callType ret
-    let argTy = Left $ map arg_type args
+    let ccTy  = callTy ret
     let retTy = ret_type res
+    let argTy | lmconv == CC_Fastcc = Left $ stgArgTy ++ (map arg_type args)
+              | otherwise           = Left $ map arg_type args
     let funTy name = LMFunction $
             LlvmFunctionDecl name ExternallyVisible lmconv retTy FixedArgs argTy
 
     -- get paramter values
-    (env1, argVars, stmts1, top1) <- arg_vars env args ([], [], [])
+    (env1, argVars, stmts1, top1) <- arg_vars env args (stgRegs, [], [])
 
     -- get the return register
     let ret_reg ([CmmHinted reg hint]) = (reg, hint)
@@ -239,7 +246,7 @@ genCall env target res args ret = do
         getFunPtr targ = case targ of
             CmmCallee (CmmLit (CmmLabel lbl)) _ -> do
                 let name = strCLabel_llvm lbl
-                case Map.lookup name env1 of
+                case funLookup name env1 of
                     Just ty'@(LMFunction sig) -> do
                         -- Function in module in right form
                         let fun = LMGlobalVar name ty' (funcLinkage sig)
@@ -258,7 +265,7 @@ genCall env target res args ret = do
                         let fty@(LMFunction sig) = funTy name
                         let fun = LMGlobalVar name fty (funcLinkage sig)
                         let top = CmmData Data [([],[fty])]
-                        let env' = Map.insert name fty env1
+                        let env' = funInsert name fty env1
                         return (env', fun, [], [top])
 
             CmmCallee expr _ -> do
@@ -288,17 +295,19 @@ genCall env target res args ret = do
     case retTy of
         LMVoid -> do
             let s1 = Expr $ Call ccTy fptr argVars
-            return (env2, stmts1 ++ stmts2 ++ [s1] ++ retStmt, top1 ++ top2)
+            let allStmts = stmts1 ++ stmts2 ++ stgStmts ++ [s1] ++ retStmt
+            return (env2, allStmts, top1 ++ top2)
 
         _ -> do
             let (creg, _) = ret_reg res
-            (v1, s1) <- doExpr retTy $ Call ccTy fptr argVars
             let (env3, vreg, stmts3, top3) = getCmmReg env2 (CmmLocal creg)
+            let allStmts = stmts1 ++ stmts2 ++ stmts3 ++ stgStmts
+            (v1, s1) <- doExpr retTy $ Call ccTy fptr argVars
             if retTy == pLower (getVarType vreg)
                 then do
                     let s2 = Store v1 vreg
-                    return (env3, stmts1 ++ stmts2 ++ stmts3 ++ [s1,s2]
-                            ++ retStmt, top1 ++ top2 ++ top3)
+                    return (env3, allStmts ++ [s1,s2] ++ retStmt,
+                            top1 ++ top2 ++ top3)
                 else do
                     let ty = pLower $ getVarType vreg
                     let op = case ty of
@@ -310,8 +319,8 @@ genCall env target res args ret = do
 
                     (v2, s2) <- doExpr ty $ Cast op v1 ty
                     let s3 = Store v2 vreg
-                    return (env3, stmts1 ++ stmts2 ++ stmts3 ++ [s1,s2,s3]
-                            ++ retStmt, top1 ++ top2 ++ top3)
+                    return (env3, allStmts ++ [s1,s2,s3] ++ retStmt,
+                            top1 ++ top2 ++ top3)
 
 
 -- Conversion of call arguments.
@@ -759,13 +768,13 @@ genCmmLoad env e ty = do
 getCmmReg :: LlvmEnv -> CmmReg -> ExprData
 getCmmReg env r@(CmmLocal (LocalReg un _))
   = let name   = uniqToStr un
-        exists = Map.lookup name env
+        exists = varLookup name env
 
         (newv, stmts) = allocReg r
         -- FIX: Should remove from env or put in proc only env. This env is
         -- global to module and shouldn't contain local vars. Could also strip
         -- local vars from env at end of proc generation.
-        nenv = Map.insert name (pLower $ getVarType newv) env
+        nenv = varInsert name (pLower $ getVarType newv) env
     in case exists of
             Just ety -> (env, (LMLocalVar name $ pLift ety), [], [])
             Nothing  -> (nenv, newv, stmts, [])
@@ -796,14 +805,14 @@ genLit env (CmmFloat r w)
 
 genLit env cmm@(CmmLabel l)
   = let label = strCLabel_llvm l
-        ty = Map.lookup label env
+        ty = funLookup label env
         lmty = cmmToLlvmType $ cmmLitType cmm
     in case ty of
             -- Make generic external label defenition and then pointer to it
             Nothing -> do
                 let glob@(var, _) = genStringLabelRef label
                 let ldata = [CmmData Data [([glob], [])]]
-                let env' = Map.insert label (pLower $ getVarType var) env
+                let env' = funInsert label (pLower $ getVarType var) env
                 (v1, s1) <- doExpr lmty $ Cast LM_Ptrtoint var llvmWord
                 return (env', v1, [s1], ldata)
             -- Referenced data exists in this module, retrieve type and make
@@ -847,6 +856,7 @@ genLit _ CmmHighStackMark
 -- Misc
 --
 
+
 -- | Load stg registers
 loadStgRegs :: UniqSM ([LlvmVar], [LlvmStatement])
 loadStgRegs = do
@@ -863,7 +873,7 @@ loadStgRegs = do
 -- with foreign functions.
 getHsFunc :: LlvmEnv -> CLabel -> UniqSM ExprData
 getHsFunc env lbl
-  = let ty  = Map.lookup fn env
+  = let ty  = funLookup fn env
         fn  = strCLabel_llvm lbl
         def = llvmFunSig lbl ExternallyVisible
         fty = LMFunction def
@@ -885,7 +895,7 @@ getHsFunc env lbl
         -- label not in module, create external reference
             let fun = LMGlobalVar fn fty ExternallyVisible
             let top = CmmData Data [([],[fty])]
-            let env' = Map.insert fn fty env
+            let env' = funInsert fn fty env
             return (env', fun, [], [top])
 
 

@@ -6,8 +6,11 @@
 
 module LlvmCodeGen.Base (
 
-        LlvmCmmTop, LlvmBasicBlock, LlvmUnresData, LlvmData, UnresLabel,
-        UnresStatic, LlvmEnv,
+        LlvmCmmTop, LlvmBasicBlock,
+        LlvmUnresData, LlvmData, UnresLabel, UnresStatic,
+
+        LlvmEnv, initLlvmEnv, clearVars, varLookup, varInsert,
+        funLookup, funInsert,
 
         cmmToLlvmType, widthToLlvmFloat, widthToLlvmInt, llvmFunTy,
         llvmFunSig, llvmPtrBits,
@@ -49,8 +52,6 @@ type LlvmData = ([LMGlobal], [LlvmType])
 type UnresLabel = CmmLit
 type UnresStatic = Either UnresLabel LlvmStatic
 
-type LlvmEnv = Map.Map LMString LlvmType
-
 -- ----------------------------------------------------------------------------
 -- Type translations
 --
@@ -90,12 +91,35 @@ llvmFunSig lbl link
 llvmPtrBits :: Int
 llvmPtrBits = widthInBits $ typeWidth gcWord
 
+
+-- ----------------------------------------------------------------------------
+-- Enviornment Handling
+--
+
+type LlvmEnvMap = Map.Map LMString LlvmType
+-- two maps, one for functions and one for local vars.
+type LlvmEnv = (LlvmEnvMap, LlvmEnvMap)
+
 -- | Get initial LlvmEnv.
 initLlvmEnv :: LlvmEnv
 initLlvmEnv
   = let n = getPlainName $ getGlobalVar mainCapability
         t = pLower $ getGlobalType mainCapability
-    in Map.insert n t Map.empty
+    in (Map.insert n t Map.empty, Map.empty)
+
+-- | clear vars
+clearVars :: LlvmEnv -> LlvmEnv
+clearVars (e1, _) = (e1, Map.empty)
+
+-- | insert functions
+varInsert, funInsert :: LMString -> LlvmType -> LlvmEnv -> LlvmEnv
+varInsert s t (e1, e2) = (e1, Map.insert s t e2)
+funInsert s t (e1, e2) = (Map.insert s t e1, e2)
+
+-- | lookup functions
+varLookup, funLookup :: LMString -> LlvmEnv -> Maybe LlvmType
+varLookup s (_, e2) = Map.lookup s e2
+funLookup s (e1, _) = Map.lookup s e1
 
 
 -- ----------------------------------------------------------------------------

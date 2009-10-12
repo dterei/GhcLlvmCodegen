@@ -47,6 +47,10 @@ Todo
 
  - look into lto/gold.
 
+ - Investigate better way to do LlvmEnv. Should also create new abstraction,
+ LlvmEnv module so as to not expose Map implementation to rest of code
+ generator. Also, handle life time of name spaces properly.
+
  - Use a new Monad instead of passing LlvmEnv around everywhere.
 
  - Use OrdList instead of [].

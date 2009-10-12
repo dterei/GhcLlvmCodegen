@@ -27,7 +27,6 @@ import Outputable
 import qualified Pretty as Prt
 import UniqSupply
 
-import qualified Data.Map as Map
 import System.IO
 
 -- -----------------------------------------------------------------------------
@@ -74,7 +73,7 @@ cmmDataLlvmGens dflags h cmm =
         cdata = concat $ map exData cmm
         -- put the functions into the enviornment
         cproc = concat $ map exProclbl cmm
-        env = foldl (\e l -> Map.insert l llvmFunTy e) initLlvmEnv cproc
+        env = foldl (\e l -> funInsert l llvmFunTy e) initLlvmEnv cproc
     in cmmDataLlvmGens' dflags h env cdata []
 
 cmmDataLlvmGens'
@@ -95,7 +94,7 @@ cmmDataLlvmGens' dflags h env [] lmdata
 cmmDataLlvmGens' dflags h env (cmm:cmms) lmdata
     = do
         let lmdata'@(l, ty, _) = genLlvmData dflags cmm
-        let env' = Map.insert (strCLabel_llvm l) ty env
+        let env' = funInsert (strCLabel_llvm l) ty env
         cmmDataLlvmGens' dflags h env' cmms (lmdata ++ [lmdata'])
 
 
@@ -115,7 +114,7 @@ cmmProcLlvmGens _ _ _ _ []
 
 cmmProcLlvmGens dflags h us env (cmm : cmms)
   = do
-      (us', env', llvm) <- cmmLlvmGen dflags us env cmm
+      (us', env', llvm) <- cmmLlvmGen dflags us (clearVars env) cmm
 
       Prt.bufLeftRender h $ Prt.vcat $ map (pprLlvmCmmTop dflags) llvm
 
