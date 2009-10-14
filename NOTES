@@ -41,6 +41,12 @@ Possible Problems
 
  - tail call only supported on x86/x86-64 and PowerPC. SPARC?
 
+ - LLVM requires all control flow to be explicit, incluiding 'ret void'.
+ Cmm doesn't, ret void is assumed like in C. For most code this is fine as with
+ CPS all the blocks are ended with tail calls or branhces. However with the
+ handwritten Cmm it can occur although currently all cases are handled
+ correctly.
+
 
 Todo
 ~~~~
@@ -71,6 +77,10 @@ Todo
 
  - handling of llvmvar or llvmtype for func sig isnt nice. Whole func sig handling
  could be better really.
+
+ - LlvmCodeGen.CodeGen.genCall code for foreign calls is quite complex, could
+ use a cleanup. Also, should implement some of the Prim ops using llvm intrinsic
+ functions.
 
 
 BUGS

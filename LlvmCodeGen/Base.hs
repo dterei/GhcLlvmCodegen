@@ -13,7 +13,7 @@ module LlvmCodeGen.Base (
         funLookup, funInsert,
 
         cmmToLlvmType, widthToLlvmFloat, widthToLlvmInt, llvmFunTy,
-        llvmFunSig, llvmPtrBits,
+        llvmFunSig, llvmStdFunAttrs, llvmPtrBits,
 
         initLlvmEnv, mainCapability, strBlockId_llvm, strCLabel_llvm,
         genCmmLabelRef, genStringLabelRef, llvmSDoc
@@ -86,6 +86,10 @@ llvmFunSig lbl link
   = let n = strCLabel_llvm lbl
     in LlvmFunctionDecl n link CC_Fastcc LMVoid FixedArgs
         (Right [lmBaseArg, lmSpArg, lmHpArg, lmR1Arg])
+
+-- | Llvm standard fun attributes
+llvmStdFunAttrs :: [LlvmFuncAttr]
+llvmStdFunAttrs = [NoUnwind]
 
 -- | Pointer width
 llvmPtrBits :: Int
