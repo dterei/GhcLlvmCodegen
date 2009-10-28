@@ -172,7 +172,7 @@ genCall env (CmmPrim MO_WriteBarrier) _ _ _ = do
                     Nothing -> [CmmData Data [([],[fty])]]
 
     let args = [lmTrue, lmTrue, lmTrue, lmTrue, lmTrue]
-    let s1 = Expr $ Call StdCall fv args
+    let s1 = Expr $ Call StdCall fv args llvmStdFunAttrs
     let env' = funInsert fname fty env
 
     return (env', [s1], tops)
@@ -217,16 +217,21 @@ genCall env target res args ret = do
     (stgRegs, stgStmts) <- case lmconv of
             CC_Fastcc -> loadStgRegs
             _other    -> return ([], [])
-
-    -- tail call?
-    let callTy CmmMayReturn = StdCall
-        callTy CmmNeverReturns
-                    | lmconv == CC_Fastcc = TailCall
-                    | otherwise = panic $ "genCall: wrong call conv for tail "
-                                        ++ " call! (" ++ show lmconv ++ ")"
                                
+    {-
+        Some of the possibilities here are a worry with the use of a custom
+        calling convention for passing STG args. In practice the more
+        dangerous combinations (e.g StdCall + CC_Fastcc) don't occur.
+
+        The native code generator only handles StdCall and CCallConv.
+    -}
+   
+    -- call attributes
+    let fnAttrs | ret == CmmNeverReturns = NoReturn : llvmStdFunAttrs
+                | otherwise              = llvmStdFunAttrs
+
     -- fun types
-    let ccTy  = callTy ret
+    let ccTy  = StdCall -- tail calls should be done through CmmJump
     let retTy = ret_type res
     let argTy | lmconv == CC_Fastcc = Left $ stgArgTy ++ (map arg_type args)
               | otherwise           = Left $ map arg_type args
@@ -288,13 +293,14 @@ genCall env target res args ret = do
 
     (env2, fptr, stmts2, top2) <- getFunPtr target
 
-    let retStmt | ccTy == TailCall = [Return (LMLocalVar "void" LMVoid)]
-                | otherwise        = []
+    let retStmt | ccTy == TailCall       = [Return (LMLocalVar "void" LMVoid)]
+                | ret == CmmNeverReturns = [Unreachable]
+                | otherwise              = []
 
     -- make the actual call
     case retTy of
         LMVoid -> do
-            let s1 = Expr $ Call ccTy fptr argVars
+            let s1 = Expr $ Call ccTy fptr argVars fnAttrs
             let allStmts = stmts1 ++ stmts2 ++ stgStmts ++ [s1] ++ retStmt
             return (env2, allStmts, top1 ++ top2)
 
@@ -302,7 +308,7 @@ genCall env target res args ret = do
             let (creg, _) = ret_reg res
             let (env3, vreg, stmts3, top3) = getCmmReg env2 (CmmLocal creg)
             let allStmts = stmts1 ++ stmts2 ++ stmts3 ++ stgStmts
-            (v1, s1) <- doExpr retTy $ Call ccTy fptr argVars
+            (v1, s1) <- doExpr retTy $ Call ccTy fptr argVars fnAttrs
             if retTy == pLower (getVarType vreg)
                 then do
                     let s2 = Store v1 vreg
@@ -395,7 +401,7 @@ genJump :: LlvmEnv -> CmmExpr -> UniqSM StmtData
 genJump env (CmmLit (CmmLabel lbl)) = do
     (env', vf, stmts, top) <- getHsFunc env lbl
     (stgRegs, stgStmts) <- loadStgRegs
-    let s1  = Expr $ Call TailCall vf stgRegs
+    let s1  = Expr $ Call TailCall vf stgRegs llvmStdFunAttrs
     let s2  = Return (LMLocalVar "void" LMVoid)
     return (env', stmts ++ stgStmts ++ [s1,s2], top)
 
@@ -414,7 +420,7 @@ genJump env expr = do
 
     (v1, s1) <- doExpr (pLift fty) $ Cast cast vf (pLift fty)
     (stgRegs, stgStmts) <- loadStgRegs
-    let s2 = Expr $ Call TailCall v1 stgRegs
+    let s2 = Expr $ Call TailCall v1 stgRegs llvmStdFunAttrs
     let s3 = Return (LMLocalVar "void" LMVoid)
     return (env', stmts ++ [s1] ++ stgStmts ++ [s2,s3], top)
 
