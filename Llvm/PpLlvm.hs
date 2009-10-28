@@ -232,19 +232,19 @@ ppCast op from to =
 
 ppMalloc :: LlvmType -> Int -> Doc
 ppMalloc tp amount =
-  (text "malloc") <+> (text $ show tp) <> comma <+> (text $ show llvmWord)
-      <+> (text $ show amount)
+  let amount' = LMLitVar $ LMIntLit (toInteger amount) i32
+  in (text "malloc") <+> (text $ show tp) <> comma <+> (text $ show amount')
 
 
 ppAlloca :: LlvmType -> Int -> Doc
 ppAlloca tp amount =
-  (text "alloca") <+> (text $ show tp) <> comma <+> (text $ show llvmWord)
-      <+> (text $ show amount)
+  let amount' = LMLitVar $ LMIntLit (toInteger amount) i32
+  in (text "alloca") <+> (text $ show tp) <> comma <+> (text $ show amount')
 
 
 ppGetElementPtr :: LlvmVar -> [Int] -> Doc
 ppGetElementPtr ptr idx =
-  let indexes = hcat $ map ((comma <+> (text $ show llvmWord) <+>) . text . show) idx
+  let indexes = hcat $ map ((comma <+> (text $ show i32) <+>) . text . show) idx
   in (text "getelementptr") <+> (text $ show ptr) <> indexes
 
 
