@@ -38,8 +38,8 @@ data LlvmCmpOp
   | LM_CMP_Slt
   | LM_CMP_Sle
 
-  -- | Float comparisons. GHC uses unordered float comparison, that is any
-  -- comparison involving a NAN returns True.
+  -- | Float comparisons. GHC uses a mix of ordere and unordered float
+  -- comparisons.
   | LM_CMP_Feq
   | LM_CMP_Fne
   | LM_CMP_Fgt
@@ -59,12 +59,12 @@ instance Show LlvmCmpOp where
   show LM_CMP_Sge = "sge"
   show LM_CMP_Slt = "slt"
   show LM_CMP_Sle = "sle"
-  show LM_CMP_Feq = "ueq"
+  show LM_CMP_Feq = "oeq"
   show LM_CMP_Fne = "une"
-  show LM_CMP_Fgt = "ugt"
-  show LM_CMP_Fge = "uge"
-  show LM_CMP_Flt = "ult"
-  show LM_CMP_Fle = "ule"
+  show LM_CMP_Fgt = "ogt"
+  show LM_CMP_Fge = "oge"
+  show LM_CMP_Flt = "olt"
+  show LM_CMP_Fle = "ole"
 
 
 -- | Llvm binary operators, parameter of the 'Expression_MachOp' constructor of type
