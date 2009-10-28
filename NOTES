@@ -23,8 +23,6 @@ General Points
 Possible Problems
 ~~~~~~~~~~~~~~~~~
 
- - Do I need to specify the data layout?
-
  - See GHC trac ticket #1852. Floats are padded to word size (4 extra bytes
  on a 64 bit machine) by putting an appropriate CmmLit before them. On fasm
  this is nessecary and forces the NCG to produce correct code. On viaC, this
@@ -47,10 +45,6 @@ Todo
 
  - look into lto/gold.
 
- - Investigate better way to do LlvmEnv. Should also create new abstraction,
- LlvmEnv module so as to not expose Map implementation to rest of code
- generator. Also, handle life time of name spaces properly.
-
  - Use a new Monad instead of passing LlvmEnv around everywhere.
 
  - Use OrdList instead of [].
@@ -72,14 +66,12 @@ Todo
  - handling of llvmvar or llvmtype for func sig isnt nice. Whole func sig handling
  could be better really.
 
+ - handling of global regs and custom calling convention ugly. Lots of very
+ similar code, need to change to handle multiple architectures easily.
+
 
 BUGS
 ~~~~
 
  - ghc-stage2 built with llvm segaults.
-
- - float NAN handling. check testsuite arith016. NAN should be equal to all
- numbers, e.g NAN == 0.0 => True. However, I return false at moment. Llvm has
- two types of float ops for if NAN == 0.0 should be true or false, check right
- one is being used. Need to use unordered (e.g ueq) instead of ordered cmps.
 
