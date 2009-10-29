@@ -30,10 +30,6 @@ Possible Problems
 
  - Should I be using FiniteMap instead of Data.Map?
 
- - Can't seem to find any evidence of pointer tagging. Is it still used?
-
- - Do I need to handle the GcPtr CmmType differently from just a bit type?
-
  - SPARC/CodeGen/Gen32.hs seems to have a few special cases for CmmMachOp.
  Perhaps these should also be handled in LLVM to improve performance?
 
