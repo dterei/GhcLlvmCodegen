@@ -23,8 +23,6 @@ General Points
 Possible Problems
 ~~~~~~~~~~~~~~~~~
 
- - Do I need to specify the data layout?
-
  - See GHC trac ticket #1852. Floats are padded to word size (4 extra bytes
  on a 64 bit machine) by putting an appropriate CmmLit before them. On fasm
  this is nessecary and forces the NCG to produce correct code. On viaC, this
@@ -32,14 +30,16 @@ Possible Problems
 
  - Should I be using FiniteMap instead of Data.Map?
 
- - Can't seem to find any evidence of pointer tagging. Is it still used?
-
- - Do I need to handle the GcPtr CmmType differently from just a bit type?
-
  - SPARC/CodeGen/Gen32.hs seems to have a few special cases for CmmMachOp.
  Perhaps these should also be handled in LLVM to improve performance?
 
  - tail call only supported on x86/x86-64 and PowerPC. SPARC?
+
+ - LLVM requires all control flow to be explicit, incluiding 'ret void'.
+ Cmm doesn't, ret void is assumed like in C. For most code this is fine as with
+ CPS all the blocks are ended with tail calls or branhces. However with the
+ handwritten Cmm it can occur although currently all cases are handled
+ correctly.
 
 
 Todo
@@ -65,14 +65,18 @@ Todo
 
  - Look at merging some of code with NCG.
 
+ - handling of llvmvar or llvmtype for func sig isnt nice. Whole func sig handling
+ could be better really.
+
+ - handling of global regs and custom calling convention ugly. Lots of very
+ similar code, need to change to handle multiple architectures easily.
+
+ - LlvmCodeGen.CodeGen.genCall code for foreign calls is quite complex, could
+ use a cleanup.
+
 
 BUGS
 ~~~~
 
  - ghc-stage2 built with llvm segaults.
-
- - float NAN handling. check testsuite arith016. NAN should be equal to all
- numbers, e.g NAN == 0.0 => True. However, I return false at moment. Llvm has
- two types of float ops for if NAN == 0.0 should be true or false, check right
- one is being used. Need to use unordered (e.g ueq) instead of ordered cmps.
 

@@ -79,7 +79,7 @@ ppLlvmFunctions funcs = vcat $ map ppLlvmFunction funcs
 
 ppLlvmFunction :: LlvmFunction -> Doc
 ppLlvmFunction (LlvmFunction dec attrs body) =
-    let attrDoc = hcat $ intersperse space (map (text . show) attrs)
+    let attrDoc = ppSpaceJoin attrs
     in (text "define") <+> (ppLlvmFuncDecSig dec)
         <+> attrDoc
         $+$ lbrace
@@ -99,7 +99,7 @@ ppLlvmFuncDecSig (LlvmFunctionDecl name link cc retTy argTy params)
   = let linkTxt = show link
         linkDoc   | linkTxt == "" = empty
                   | otherwise     = (text linkTxt) <> space
-        ppParams = ppCommaJoin params <>
+        ppParams = either ppCommaJoin ppCommaJoin params <>
                     (case argTy of
                         VarArgs -> (text ", ...")
                         FixedArgs -> empty)
@@ -148,15 +148,15 @@ ppLlvmStatement stmt
 ppLlvmExpression :: LlvmExpression -> Doc
 ppLlvmExpression expr
   = case expr of
-        Alloca     tp amount     -> ppAlloca tp amount
-        LlvmOp     op left right -> ppMachOp op left right
-        Call       tp fp args    -> ppCall tp fp args
-        Cast       op from to    -> ppCast op from to
-        Compare    op left right -> ppCmpOp op left right
-        GetElemPtr ptr indexes   -> ppGetElementPtr ptr indexes
-        Load       ptr           -> ppLoad ptr
-        Malloc     tp amount     -> ppMalloc tp amount
-        Phi        tp precessors -> ppPhi tp precessors
+        Alloca     tp amount        -> ppAlloca tp amount
+        LlvmOp     op left right    -> ppMachOp op left right
+        Call       tp fp args attrs -> ppCall tp fp args attrs
+        Cast       op from to       -> ppCast op from to
+        Compare    op left right    -> ppCmpOp op left right
+        GetElemPtr ptr indexes      -> ppGetElementPtr ptr indexes
+        Load       ptr              -> ppLoad ptr
+        Malloc     tp amount        -> ppMalloc tp amount
+        Phi        tp precessors    -> ppPhi tp precessors
 
 
 --------------------------------------------------------------------------------
@@ -165,8 +165,8 @@ ppLlvmExpression expr
 
 -- Should always be a function pointer. So a global var of function type
 -- (since globals are always pointers) or a local var of pointer function type.
-ppCall :: LlvmCallType -> LlvmVar -> [LlvmVar]-> Doc
-ppCall ct fptr vals = case fptr of
+ppCall :: LlvmCallType -> LlvmVar -> [LlvmVar] -> [LlvmFuncAttr] -> Doc
+ppCall ct fptr vals attrs = case fptr of
                            --
     -- if local var function pointer, unwrap
     LMLocalVar _ (LMPointer (LMFunction d)) -> ppCall' d
@@ -183,14 +183,15 @@ ppCall ct fptr vals = case fptr of
         ppCall' (LlvmFunctionDecl _ _ cc ret argTy params) =
             let tc = if ct == TailCall then text "tail " else empty
                 ppValues = ppCommaJoin vals
-                ppArgTy = ppCommaJoin params <>
+                ppArgTy = either ppCommaJoin (\x -> ppCommaJoin $ map getVarType x) params <>
                            (case argTy of
                                VarArgs -> (text ", ...")
                                FixedArgs -> empty)
                 fnty = space <> lparen <> ppArgTy <> rparen <> (text "*")
+                attrDoc = ppSpaceJoin attrs
             in  tc <> (text "call") <+> (text $ show cc) <+> (text $ show ret)
                     <> fnty <+> (text $ getName fptr) <> lparen <+> ppValues
-                    <+> rparen
+                    <+> rparen <+> attrDoc
 
 
 ppMachOp :: LlvmMachOp -> LlvmVar -> LlvmVar -> Doc
@@ -232,19 +233,19 @@ ppCast op from to =
 
 ppMalloc :: LlvmType -> Int -> Doc
 ppMalloc tp amount =
-  (text "malloc") <+> (text $ show tp) <> comma <+> (text $ show llvmWord)
-      <+> (text $ show amount)
+  let amount' = LMLitVar $ LMIntLit (toInteger amount) i32
+  in (text "malloc") <+> (text $ show tp) <> comma <+> (text $ show amount')
 
 
 ppAlloca :: LlvmType -> Int -> Doc
 ppAlloca tp amount =
-  (text "alloca") <+> (text $ show tp) <> comma <+> (text $ show llvmWord)
-      <+> (text $ show amount)
+  let amount' = LMLitVar $ LMIntLit (toInteger amount) i32
+  in (text "alloca") <+> (text $ show tp) <> comma <+> (text $ show amount')
 
 
 ppGetElementPtr :: LlvmVar -> [Int] -> Doc
 ppGetElementPtr ptr idx =
-  let indexes = hcat $ map ((comma <+> (text $ show llvmWord) <+>) . text . show) idx
+  let indexes = hcat $ map ((comma <+> (text $ show i32) <+>) . text . show) idx
   in (text "getelementptr") <+> (text $ show ptr) <> indexes
 
 
@@ -288,4 +289,7 @@ atsym = text "@"
 
 ppCommaJoin :: (Show a) => [a] -> Doc
 ppCommaJoin strs = hcat $ intersperse comma (map (text . show) strs)
+
+ppSpaceJoin :: (Show a) => [a] -> Doc
+ppSpaceJoin strs = hcat $ intersperse space (map (text . show) strs)
 

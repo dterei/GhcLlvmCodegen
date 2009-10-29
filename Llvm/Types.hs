@@ -38,8 +38,8 @@ data LlvmCmpOp
   | LM_CMP_Slt
   | LM_CMP_Sle
 
-  -- | Float comparisons. GHC uses unordered float comparison, that is any
-  -- comparison involving a NAN returns True.
+  -- | Float comparisons. GHC uses a mix of ordere and unordered float
+  -- comparisons.
   | LM_CMP_Feq
   | LM_CMP_Fne
   | LM_CMP_Fgt
@@ -59,12 +59,12 @@ instance Show LlvmCmpOp where
   show LM_CMP_Sge = "sge"
   show LM_CMP_Slt = "slt"
   show LM_CMP_Sle = "sle"
-  show LM_CMP_Feq = "ueq"
+  show LM_CMP_Feq = "oeq"
   show LM_CMP_Fne = "une"
-  show LM_CMP_Fgt = "ugt"
-  show LM_CMP_Fge = "uge"
-  show LM_CMP_Flt = "ult"
-  show LM_CMP_Fle = "ule"
+  show LM_CMP_Fgt = "ogt"
+  show LM_CMP_Fge = "oge"
+  show LM_CMP_Flt = "olt"
+  show LM_CMP_Fle = "ole"
 
 
 -- | Llvm binary operators, parameter of the 'Expression_MachOp' constructor of type
@@ -288,9 +288,9 @@ instance Show LlvmType where
   show (LMStruct tys  ) = "{" ++ (commaCat tys) ++ "}"
 
   show (LMFunction (LlvmFunctionDecl _ _ _ r VarArgs p))
-        = (show r) ++ " (" ++ (commaCat p) ++ ", ...)"
+        = (show r) ++ " (" ++ (either commaCat commaCat p) ++ ", ...)"
   show (LMFunction (LlvmFunctionDecl _ _ _ r FixedArgs p))
-        = (show r) ++ " (" ++ (commaCat p) ++ ")"
+        = (show r) ++ " (" ++ (either commaCat commaCat p) ++ ")"
 
   show (LMAlias s _   ) = "%" ++ s
 
@@ -382,6 +382,10 @@ i1   = LMInt   1
 llvmWord :: LlvmType
 llvmWord = LMInt (wORD_SIZE * 8)
 
+llvmWordPtr :: LlvmType
+llvmWordPtr = pLift llvmWord
+
+
 -- | Add a pointer indirection to the supplied type. 'Label' and 'Void'
 --  cannot be lifted.
 pLift :: LlvmType -> LlvmType
@@ -449,23 +453,24 @@ llvmWidthInBits (LMAlias _ t)    = llvmWidthInBits t
 --    * funCc:      The calling convention of the function.
 --    * returnType: Type of the returned value
 --    * varargs:    ParameterListType indicating if this function uses varargs
---    * params:     Signature of the parameters
+--    * params:     Signature of the parameters, can be just types or full vars
+--                  if paramater names are requried.
 data LlvmFunctionDecl = LlvmFunctionDecl {
         decName       :: LMString,
         funcLinkage   :: LlvmLinkageType,
         funcCc        :: LlvmCallConvention,
         decReturnType :: LlvmType,
         decVarargs    :: LlvmParameterListType,
-        decParams     :: [LlvmType]
+        decParams     :: Either [LlvmType] [LlvmVar]
   }
 
 instance Show LlvmFunctionDecl where
   show (LlvmFunctionDecl n l c r VarArgs p)
         = (show l) ++ " " ++  (show c) ++ " " ++ (show r)
-            ++ " @" ++ n ++ "(" ++ (commaCat p) ++ ", ...)"
+            ++ " @" ++ n ++ "(" ++ (either commaCat commaCat p) ++ ", ...)"
   show (LlvmFunctionDecl n l c r FixedArgs p)
         = (show l) ++ " " ++  (show c) ++ " " ++ (show r)
-            ++ " @" ++ n ++ "(" ++ (commaCat p) ++ ")"
+            ++ " @" ++ n ++ "(" ++ (either commaCat commaCat p) ++ ")"
 
 instance Eq LlvmFunctionDecl where
   (LlvmFunctionDecl n1 l1 c1 r1 v1 p1) == (LlvmFunctionDecl n2 l2 c2 r2 v2 p2)

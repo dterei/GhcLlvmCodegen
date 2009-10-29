@@ -200,8 +200,10 @@ data LlvmExpression
       * fnptrval:  An LLVM value containing a pointer to a function to be
                    invoked. Can be indirect. Should be LMFunction type.
       * args:      Concrete arguments for the parameters
+      * attrs:     A list of function attributes for the call. Only NoReturn,
+                   NoUnwind, ReadOnly and ReadNone are valid here.
   -}
-  | Call LlvmCallType LlvmVar [LlvmVar]
+  | Call LlvmCallType LlvmVar [LlvmVar] [LlvmFuncAttr]
 
   {-
     Phi

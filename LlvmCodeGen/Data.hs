@@ -18,7 +18,6 @@ import Cmm
 import DynFlags
 import qualified Outputable
 
-import qualified Data.Map as Map
 import Data.Maybe
 
 
@@ -100,13 +99,13 @@ resData env (Right stat) = (env, stat, [Nothing])
 
 resData env (Left cmm@(CmmLabel l)) =
     let label = strCLabel_llvm l
-        ty = Map.lookup label env
+        ty = funLookup label env
         lmty = cmmToLlvmType $ cmmLitType cmm
     in case ty of
             -- Make generic external label defenition and then pointer to it
             Nothing ->
                 let glob@(var, _) = genStringLabelRef label
-                    env' =  Map.insert label (pLower $ getVarType var) env
+                    env' =  funInsert label (pLower $ getVarType var) env
                     ptr  = LMStaticPointer var
                 in  (env', LMPtoI ptr lmty, [Just glob])
             -- Referenced data exists in this module, retrieve type and make
