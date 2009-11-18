@@ -161,7 +161,7 @@ genStringLabelRef cl =
 -- | Convert SDoc to Doc
 llvmSDoc :: Outputable.SDoc -> Doc
 llvmSDoc d
-	= Outputable.withPprStyleDoc (Outputable.mkCodeStyle Outputable.AsmStyle) d
+	= Outputable.withPprStyleDoc (Outputable.mkCodeStyle Outputable.CStyle) d
 
 -- | error function
 panic :: String -> a
