@@ -45,6 +45,8 @@ Possible Problems
 Todo
 ~~~~
 
+ - Add llvm code gen to ghc --info.
+
  - look into lto/gold.
 
  - Use a new Monad instead of passing LlvmEnv around everywhere.
