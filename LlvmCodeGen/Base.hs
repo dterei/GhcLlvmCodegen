@@ -15,7 +15,7 @@ module LlvmCodeGen.Base (
         cmmToLlvmType, widthToLlvmFloat, widthToLlvmInt, llvmFunTy,
         llvmFunSig, llvmStdFunAttrs, llvmPtrBits,
 
-        initLlvmEnv, mainCapability, strBlockId_llvm, strCLabel_llvm,
+        mainCapability, strBlockId_llvm, strCLabel_llvm,
         genCmmLabelRef, genStringLabelRef, llvmSDoc
 
     ) where
