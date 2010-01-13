@@ -288,7 +288,7 @@ genCall env target res args ret = do
 
             CmmPrim mop -> do
                 let name = cmmPrimOpFunctions mop
-                let lbl  = mkForeignLabel name Nothing True IsFunction
+                let lbl  = mkForeignLabel name Nothing ForeignLabelInExternalPackage IsFunction
                 getFunPtr $ CmmCallee (CmmLit (CmmLabel lbl)) CCallConv
 
     (env2, fptr, stmts2, top2) <- getFunPtr target
