@@ -88,6 +88,9 @@ cmmDataLlvmGens' dflags h env [] lmdata
     = do
         let (env', lmdata') = resolveLlvmDatas dflags env lmdata []
         let lmdoc = Prt.vcat $ map (pprLlvmData dflags) lmdata'
+
+        dumpIfSet_dyn dflags Opt_D_dump_llvm "LLVM Code" $ docToSDoc lmdoc
+
         Prt.bufLeftRender h lmdoc
         return env'
 
@@ -146,7 +149,7 @@ cmmLlvmGen dflags us env cmm
     -- generate native code from cmm
     let ((env', llvmBC), usGen) = initUs usFix $ genLlvmCode dflags env opt_cmm
 
-    dumpIfSet_dyn dflags Opt_D_dump_llvm "LLVM code"
+    dumpIfSet_dyn dflags Opt_D_dump_llvm "LLVM Code"
         (vcat $ map (docToSDoc . pprLlvmCmmTop dflags) llvmBC)
 
     return (usGen, env', llvmBC)
