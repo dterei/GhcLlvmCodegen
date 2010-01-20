@@ -41,7 +41,7 @@ moduleLayout =
 
 -- | Header code for LLVM modules
 pprLlvmHeader :: Doc
-pprLlvmHeader = moduleLayout $+$ ppLlvmGlobal mainCapability
+pprLlvmHeader = moduleLayout
 
 
 -- | Pretty print LLVM code

@@ -45,14 +45,6 @@ Possible Problems
 Todo
 ~~~~
 
- - add '-tailcallopt' param to llc.
-
- - add '-On' param to llc (only supported by llvm 2.6 and above)
-
- - probably should remove the MainCapability label handling, this special case
- is covered by the generic external label handling so just adds uneeded code
- and complication.
-
  - look into lto/gold.
 
  - Use a new Monad instead of passing LlvmEnv around everywhere.

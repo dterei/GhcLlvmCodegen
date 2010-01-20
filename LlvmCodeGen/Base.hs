@@ -15,7 +15,7 @@ module LlvmCodeGen.Base (
         cmmToLlvmType, widthToLlvmFloat, widthToLlvmInt, llvmFunTy,
         llvmFunSig, llvmStdFunAttrs, llvmPtrBits,
 
-        mainCapability, strBlockId_llvm, strCLabel_llvm,
+        strBlockId_llvm, strCLabel_llvm,
         genCmmLabelRef, genStringLabelRef, llvmSDoc
 
     ) where
@@ -23,7 +23,9 @@ module LlvmCodeGen.Base (
 #include "HsVersions.h"
 
 import Llvm
+#ifndef NO_REGS
 import LlvmCodeGen.Regs
+#endif
 
 import BlockId
 import CLabel
@@ -114,10 +116,7 @@ type LlvmEnv = (LlvmEnvMap, LlvmEnvMap)
 
 -- | Get initial LlvmEnv.
 initLlvmEnv :: LlvmEnv
-initLlvmEnv
-  = let n = getPlainName $ getGlobalVar mainCapability
-        t = pLower $ getGlobalType mainCapability
-    in (Map.insert n t Map.empty, Map.empty)
+initLlvmEnv = (Map.empty, Map.empty)
 
 -- | clear vars
 clearVars :: LlvmEnv -> LlvmEnv
@@ -137,10 +136,6 @@ funLookup s (e1, _) = Map.lookup s e1
 -- ----------------------------------------------------------------------------
 -- Label handling
 --
-
--- | Add external reference to the MainCapability
-mainCapability :: LMGlobal
-mainCapability = genCmmLabelRef mkMainCapabilityLabel
 
 -- | Pretty Print a BlockId
 strBlockId_llvm :: BlockId -> LMString
