@@ -45,7 +45,13 @@ Possible Problems
 Todo
 ~~~~
 
- - Add llvm code gen to ghc --info.
+ - add '-tailcallopt' param to llc.
+
+ - add '-On' param to llc (only supported by llvm 2.6 and above)
+
+ - probably should remove the MainCapability label handling, this special case
+ is covered by the generic external label handling so just adds uneeded code
+ and complication.
 
  - look into lto/gold.
 
@@ -80,5 +86,8 @@ Todo
 BUGS
 ~~~~
 
- - ghc-stage2 built with llvm segaults.
+ - foreign calls on Mac OS X don't work. Seems to be because LLVM isn't
+ generating correct code. All system calls must be 16 byte aligned in OS X
+ and llvm isn't respecting this. Not sure if its a bug in LLVM or due to my
+ changes to llvm.
 
