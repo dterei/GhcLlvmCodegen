@@ -78,14 +78,22 @@ llvmFunTy :: LlvmType
 llvmFunTy
   = LMFunction $
         LlvmFunctionDecl "a" ExternallyVisible CC_Fastcc LMVoid FixedArgs
+#ifndef NO_REGS
             (Left [llvmWord, llvmWord, llvmWord, llvmWord])
+#else /* Unregistered build */
+            (Left [])
+#endif
 
 -- | Llvm Function signature
 llvmFunSig :: CLabel -> LlvmLinkageType -> LlvmFunctionDecl
 llvmFunSig lbl link
   = let n = strCLabel_llvm lbl
     in LlvmFunctionDecl n link CC_Fastcc LMVoid FixedArgs
+#ifndef NO_REGS
         (Right [lmBaseArg, lmSpArg, lmHpArg, lmR1Arg])
+#else /* Unregistered build */
+        (Left [])
+#endif
 
 -- | Llvm standard fun attributes
 llvmStdFunAttrs :: [LlvmFuncAttr]

@@ -60,12 +60,17 @@ basicBlocksCodeGen env ([]) (blocks, tops)
        let fblocks = (BasicBlock id (stgRegs ++ allocs' ++ fstmts)):rblocks
        return (env, fblocks, tops)
   where
-        stgRegs = concat [getReg lmBaseReg lmBaseArg, getReg lmSpReg lmSpArg,
+#ifndef NO_REGS
+        stgRegs = allocs ++ stores
+        (allocs, stores) = unzip [getReg lmBaseReg lmBaseArg, getReg lmSpReg lmSpArg,
                             getReg lmHpReg lmHpArg, getReg lmR1Reg lmR1Arg]
         getReg reg arg =
             let alloc = Assignment reg $ Alloca (pLower $ getVarType reg) 1
                 store = Store arg reg
-            in [alloc, store]
+            in (alloc, store)
+#else
+        stgRegs = []
+#endif
 
 basicBlocksCodeGen env (block:blocks) (lblocks', ltops')
   = do (env', lb, lt) <- basicBlockCodeGen env block
@@ -865,12 +870,16 @@ genLit _ CmmHighStackMark
 
 -- | Load stg registers
 loadStgRegs :: UniqSM ([LlvmVar], [LlvmStatement])
+#ifndef NO_REGS
 loadStgRegs = do
     (p1, sp1) <- doExpr (pLower $ getVarType  lmBaseReg) $ Load lmBaseReg
     (p2, sp2) <- doExpr (pLower $ getVarType  lmSpReg)   $ Load lmSpReg
     (p3, sp3) <- doExpr (pLower $ getVarType  lmHpReg)   $ Load lmHpReg
     (p4, sp4) <- doExpr (pLower $ getVarType  lmR1Reg)   $ Load lmR1Reg
     return ([p1, p2, p3, p4], [sp1, sp2, sp3, sp4])
+#else
+loadStgRegs = return ([], [])
+#endif
 
 
 -- | Get a function pointer to the CLabel specified.

@@ -68,11 +68,16 @@ getLlvmStgReg _ = panic $ "getLlvmStgReg: Unsupported global reg! only x86 is "
 --   See also get_GlobalReg_addr in CgUtils.
 --
 get_GlobalReg_addr :: GlobalReg -> Either RealReg CmmExpr
-
+#ifndef NO_REGS
+#ifdef i386_TARGET_ARCH
 get_GlobalReg_addr (BaseReg       ) = Left RR_Base
 get_GlobalReg_addr (Sp            ) = Left RR_Sp
 get_GlobalReg_addr (Hp            ) = Left RR_Hp
 get_GlobalReg_addr (VanillaReg 1 _) = Left RR_R1
+#else
+get_GlobalReg_addr _ = panic "Only support i386 in registered mode currently"
+#endif
+#endif
 
 get_GlobalReg_addr mid = Right $ CgUtils.get_GlobalReg_addr mid
 
