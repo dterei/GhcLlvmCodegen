@@ -81,7 +81,7 @@ llvmFunTy
   = LMFunction $
         LlvmFunctionDecl "a" ExternallyVisible CC_Fastcc LMVoid FixedArgs
 #ifndef NO_REGS
-            (Left [llvmWord, llvmWord, llvmWord, llvmWord])
+            (Left $ map getVarType llvmFunArgs)
 #else /* Unregistered build */
             (Left [])
 #endif
@@ -92,10 +92,14 @@ llvmFunSig lbl link
   = let n = strCLabel_llvm lbl
     in LlvmFunctionDecl n link CC_Fastcc LMVoid FixedArgs
 #ifndef NO_REGS
-        (Right [lmBaseArg, lmSpArg, lmHpArg, lmR1Arg])
+        (Right llvmFunArgs)
 #else /* Unregistered build */
         (Left [])
 #endif
+
+-- | A Function's arguments
+llvmFunArgs :: [LlvmVar]
+llvmFunArgs = map getRealRegArg realRegsOrdered
 
 -- | Llvm standard fun attributes
 llvmStdFunAttrs :: [LlvmFuncAttr]

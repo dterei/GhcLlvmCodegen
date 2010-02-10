@@ -62,10 +62,11 @@ basicBlocksCodeGen env ([]) (blocks, tops)
   where
 #ifndef NO_REGS
         stgRegs = allocs ++ stores
-        (allocs, stores) = unzip [getReg lmBaseReg lmBaseArg, getReg lmSpReg lmSpArg,
-                            getReg lmHpReg lmHpArg, getReg lmR1Reg lmR1Arg]
-        getReg reg arg =
-            let alloc = Assignment reg $ Alloca (pLower $ getVarType reg) 1
+        (allocs, stores) = mapAndUnzip getReg realRegsOrdered
+        getReg rr =
+            let reg = getRealRegReg rr
+                arg = getRealRegArg rr
+                alloc = Assignment reg $ Alloca (pLower $ getVarType reg) 1
                 store = Store arg reg
             in (alloc, store)
 #else
@@ -494,7 +495,6 @@ genSwitch env cond maybe_ids = do
     let pairs = [ (ix, id) | (ix,Just id) <- zip ([0..]::[Integer]) maybe_ids ]
     let labels = map (\(ix, b) -> (mkIntLit ix ty, blockIdToLlvm b)) pairs
     -- out of range is undefied, so lets just branch to first label
-    -- FIX: Maybe create new error branch instead?
     let (_, defLbl) = head labels
 
     let stmt1 = Switch vc defLbl labels
@@ -782,9 +782,6 @@ getCmmReg env r@(CmmLocal (LocalReg un _))
         exists = varLookup name env
 
         (newv, stmts) = allocReg r
-        -- FIX: Should remove from env or put in proc only env. This env is
-        -- global to module and shouldn't contain local vars. Could also strip
-        -- local vars from env at end of proc generation.
         nenv = varInsert name (pLower $ getVarType newv) env
     in case exists of
             Just ety -> (env, (LMLocalVar name $ pLift ety), [], [])
@@ -872,11 +869,9 @@ genLit _ CmmHighStackMark
 loadStgRegs :: UniqSM ([LlvmVar], [LlvmStatement])
 #ifndef NO_REGS
 loadStgRegs = do
-    (p1, sp1) <- doExpr (pLower $ getVarType  lmBaseReg) $ Load lmBaseReg
-    (p2, sp2) <- doExpr (pLower $ getVarType  lmSpReg)   $ Load lmSpReg
-    (p3, sp3) <- doExpr (pLower $ getVarType  lmHpReg)   $ Load lmHpReg
-    (p4, sp4) <- doExpr (pLower $ getVarType  lmR1Reg)   $ Load lmR1Reg
-    return ([p1, p2, p3, p4], [sp1, sp2, sp3, sp4])
+    let loadExpr r = doExpr (pLower $ getVarType r) $ Load r
+    loads <- mapM (\x -> loadExpr $ getRealRegReg x) realRegsOrdered
+    return $ unzip loads
 #else
 loadStgRegs = return ([], [])
 #endif
