@@ -23,9 +23,7 @@ module LlvmCodeGen.Base (
 #include "HsVersions.h"
 
 import Llvm
-#ifndef NO_REGS
 import LlvmCodeGen.Regs
-#endif
 
 import BlockId
 import CLabel
@@ -80,22 +78,14 @@ llvmFunTy :: LlvmType
 llvmFunTy
   = LMFunction $
         LlvmFunctionDecl "a" ExternallyVisible CC_Fastcc LMVoid FixedArgs
-#ifndef NO_REGS
             (Left $ map getVarType llvmFunArgs)
-#else /* Unregistered build */
-            (Left [])
-#endif
 
 -- | Llvm Function signature
 llvmFunSig :: CLabel -> LlvmLinkageType -> LlvmFunctionDecl
 llvmFunSig lbl link
   = let n = strCLabel_llvm lbl
     in LlvmFunctionDecl n link CC_Fastcc LMVoid FixedArgs
-#ifndef NO_REGS
         (Right llvmFunArgs)
-#else /* Unregistered build */
-        (Left [])
-#endif
 
 -- | A Function's arguments
 llvmFunArgs :: [LlvmVar]

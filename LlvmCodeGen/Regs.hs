@@ -7,14 +7,7 @@
 
 module LlvmCodeGen.Regs (
 
-        RealReg(..), realRegsOrdered, getRealRegReg, getRealRegArg,
-        lmBaseReg, lmSpReg, lmHpReg, lmR1Reg, lmR2Reg, lmR3Reg, lmR4Reg,
-        lmR5Reg, lmR6Reg, lmSpLimReg, lmF1Reg, lmF2Reg, lmF3Reg, lmF4Reg,
-        lmD1Reg, lmD2Reg,
-        lmBaseArg, lmSpArg, lmHpArg, lmR1Arg, lmR2Arg, lmR3Arg, lmR4Arg,
-        lmR5Arg, lmR6Arg, lmSpLimArg, lmF1Arg, lmF2Arg, lmF3Arg, lmF4Arg,
-        lmD1Arg, lmD2Arg,
-        getLlvmStgReg, get_GlobalReg_addr
+        RealReg, realRegsOrdered, getRealRegReg, getRealRegArg, getGlobalRegAddr
 
     ) where
 
@@ -24,12 +17,9 @@ import Llvm
 
 import Cmm
 import qualified CgUtils ( get_GlobalReg_addr )
-import qualified Outputable ( panic )
 
--- Currently a hack!
--- registered specific to x86 back-end and needs a custom version
--- of llvm which uses a modified call convention to pass the registers
--- around correctly.
+-- | A data type corresponding to the STG virtual registers.
+--   These provide a hard implementation of the STG virtual registers.
 data RealReg
   = RR_Base
   | RR_Sp
@@ -47,11 +37,25 @@ data RealReg
   | RR_F4
   | RR_D1
   | RR_D2
+  deriving (Eq)
 
+-- | Here is where the STG register map is defined for each target arch.
 realRegsOrdered :: [RealReg]
 realRegsOrdered
+#ifdef NO_REGS
+  = []
+
+#elif defined(i386_TARGET_ARCH)
+  = [RR_Base, RR_Sp, RR_Hp, RR_R1]
+
+#elif defined(x86_64_TARGET_ARCH)
   = [RR_Base, RR_Sp, RR_Hp, RR_R1, RR_R2, RR_R3, RR_R4, RR_R5,
         RR_R6, RR_SpLim, RR_F1, RR_F2, RR_F3, RR_F4, RR_D1, RR_D2]
+
+#else
+  = [RR_Base, RR_Sp, RR_Hp, RR_R1, RR_R2, RR_R3, RR_R4, RR_R5,
+        RR_R6, RR_SpLim, RR_F1, RR_F2, RR_F3, RR_F4, RR_D1, RR_D2]
+#endif
 
 -- | Get the LlvmVar storing the real register
 getRealRegReg :: RealReg -> LlvmVar
@@ -145,71 +149,35 @@ lmD1Arg    = LMLocalVar "stg_terei_d1Arg"    LMDouble
 lmD2Arg    = LMLocalVar "stg_terei_d2Arg"    LMDouble
 
 
-getLlvmStgReg :: GlobalReg -> LlvmVar
-getLlvmStgReg (BaseReg       ) = lmBaseReg
-getLlvmStgReg (Sp            ) = lmSpReg
-getLlvmStgReg (Hp            ) = lmHpReg
-getLlvmStgReg (VanillaReg 1 _) = lmR1Reg
-getLlvmStgReg (VanillaReg 2 _) = lmR2Reg
-getLlvmStgReg (VanillaReg 3 _) = lmR3Reg
-getLlvmStgReg (VanillaReg 4 _) = lmR4Reg
-getLlvmStgReg (VanillaReg 5 _) = lmR5Reg
-getLlvmStgReg (VanillaReg 6 _) = lmR6Reg
-getLlvmStgReg (SpLim         ) = lmSpLimReg
-getLlvmStgReg (FloatReg   1  ) = lmF1Reg
-getLlvmStgReg (FloatReg   2  ) = lmF2Reg
-getLlvmStgReg (FloatReg   3  ) = lmF3Reg
-getLlvmStgReg (FloatReg   4  ) = lmF4Reg
-getLlvmStgReg (DoubleReg  1  ) = lmD1Reg
-getLlvmStgReg (DoubleReg  2  ) = lmD2Reg
-getLlvmStgReg _ = panic $ "getLlvmStgReg: Unsupported global reg! only x86 is "
-                    ++ "supported as a registered build!"
-
-
--- | We map STG registers onto appropriate CmmExprs.
---   If they map to don't map to a reg table offset then
---   Nothing is returned as the LLVM back-end doesn't
---   support pinned registers.
+-- | We map STG registers onto an appropriate RealReg or CmmExpr.
+--   RealReg is used when the STG register is pinned to a hardware register
+--   and CmmExpr is used when it isn't and instead a load from the Register
+--   table is used.
 --
---   See also get_GlobalReg_addr in CgUtils.
+--   See also getGlobalRegAddr in CgUtils.
 --
-get_GlobalReg_addr :: GlobalReg -> Either RealReg CmmExpr
-#ifndef NO_REGS
+getGlobalRegAddr :: GlobalReg -> Either RealReg CmmExpr
+getGlobalRegAddr r@(BaseReg       ) = regsOrTable RR_Base r
+getGlobalRegAddr r@(Sp            ) = regsOrTable RR_Sp r
+getGlobalRegAddr r@(Hp            ) = regsOrTable RR_Hp r
+getGlobalRegAddr r@(VanillaReg 1 _) = regsOrTable RR_R1 r
+getGlobalRegAddr r@(VanillaReg 2 _) = regsOrTable RR_R2 r
+getGlobalRegAddr r@(VanillaReg 3 _) = regsOrTable RR_R3 r
+getGlobalRegAddr r@(VanillaReg 4 _) = regsOrTable RR_R4 r
+getGlobalRegAddr r@(VanillaReg 5 _) = regsOrTable RR_R5 r
+getGlobalRegAddr r@(VanillaReg 6 _) = regsOrTable RR_R6 r
+getGlobalRegAddr r@(SpLim         ) = regsOrTable RR_SpLim r
+getGlobalRegAddr r@(FloatReg   1  ) = regsOrTable RR_F1 r
+getGlobalRegAddr r@(FloatReg   2  ) = regsOrTable RR_F2 r
+getGlobalRegAddr r@(FloatReg   3  ) = regsOrTable RR_F3 r
+getGlobalRegAddr r@(FloatReg   4  ) = regsOrTable RR_F4 r
+getGlobalRegAddr r@(DoubleReg  1  ) = regsOrTable RR_D1 r
+getGlobalRegAddr r@(DoubleReg  2  ) = regsOrTable RR_D2 r
 
-#ifdef i386_TARGET_ARCH
-get_GlobalReg_addr (BaseReg       ) = Left RR_Base
-get_GlobalReg_addr (Sp            ) = Left RR_Sp
-get_GlobalReg_addr (Hp            ) = Left RR_Hp
-get_GlobalReg_addr (VanillaReg 1 _) = Left RR_R1
-#endif
+getGlobalRegAddr r                  = Right $ CgUtils.get_GlobalReg_addr r
 
-#ifdef x86_64_TARGET_ARCH
-get_GlobalReg_addr (BaseReg       ) = Left RR_Base
-get_GlobalReg_addr (Sp            ) = Left RR_Sp
-get_GlobalReg_addr (Hp            ) = Left RR_Hp
-get_GlobalReg_addr (VanillaReg 1 _) = Left RR_R1
-get_GlobalReg_addr (VanillaReg 2 _) = Left RR_R2
-get_GlobalReg_addr (VanillaReg 3 _) = Left RR_R3
-get_GlobalReg_addr (VanillaReg 4 _) = Left RR_R4
-get_GlobalReg_addr (VanillaReg 5 _) = Left RR_R5
-get_GlobalReg_addr (VanillaReg 6 _) = Left RR_R6
-get_GlobalReg_addr (SpLim         ) = Left RR_SpLim
-get_GlobalReg_addr (FloatReg   1  ) = Left RR_F1
-get_GlobalReg_addr (FloatReg   2  ) = Left RR_F2
-get_GlobalReg_addr (FloatReg   3  ) = Left RR_F3
-get_GlobalReg_addr (FloatReg   4  ) = Left RR_F4
-get_GlobalReg_addr (DoubleReg  1  ) = Left RR_D1
-get_GlobalReg_addr (DoubleReg  2  ) = Left RR_D2
-#endif
-
-#else
-get_GlobalReg_addr _ = panic "Only support x86/x86-64 in registered mode currently"
-#endif
-
-get_GlobalReg_addr mid = Right $ CgUtils.get_GlobalReg_addr mid
-
-
--- | error function
-panic :: String -> a
-panic s = Outputable.panic $ "LlvmCodeGen.Regs." ++ s
+regsOrTable :: RealReg -> GlobalReg -> Either RealReg CmmExpr
+regsOrTable lmR stgR = if lmR `elem` realRegsOrdered
+         then Left lmR
+         else Right $ CgUtils.get_GlobalReg_addr stgR
 

@@ -214,7 +214,7 @@ fixAssign e@(CmmAssign (CmmGlobal reg) src)
           -- arch are left unchanged.  Assigning to BaseReg is always
           -- illegal, so we check for that.
   where
-      reg_or_addr = get_GlobalReg_addr reg
+      reg_or_addr = getGlobalRegAddr reg
 
 fixAssign other_stmt = returnUs [other_stmt]
 
@@ -313,7 +313,7 @@ cmmExprConFold expr
             -- to mean the address of the reg table in MainCapability,
             -- and for all others we generate an indirection to its
             -- location in the register table.
-            -> case get_GlobalReg_addr mid of
+            -> case getGlobalRegAddr mid of
                     Left  _realreg -> expr
                     Right baseRegAddr
                         -> case mid of
@@ -329,7 +329,7 @@ cmmExprConFold expr
             -- RegOf leaves are just a shorthand form. If the reg maps
             -- to a real reg, we keep the shorthand, otherwise, we just
             -- expand it and defer to the above code.
-            -> case get_GlobalReg_addr mid of
+            -> case getGlobalRegAddr mid of
                     Left  _realreg -> expr
                     Right _baseRegAddr
                         -> cmmExprConFold (CmmMachOp (MO_Add wordWidth) [
