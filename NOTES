@@ -35,16 +35,10 @@ Possible Problems
 
  - tail call only supported on x86/x86-64 and PowerPC. SPARC?
 
- - LLVM requires all control flow to be explicit, incluiding 'ret void'.
- Cmm doesn't, ret void is assumed like in C. For most code this is fine as with
- CPS all the blocks are ended with tail calls or branhces. However with the
- handwritten Cmm it can occur although currently all cases are handled
- correctly.
-
  - Using hardcoded names for my implementation of STG virtual registers. I
  think this is fine but should check what are the rules for the unique name
- generator to make sure it can't confict. Or perhaps generate unique names for them
- at the start of each function.
+ generator to make sure it can't confict. Or perhaps generate unique names for
+ them at the start of each function.
 
 
 Todo
@@ -70,8 +64,8 @@ Todo
 
  - Look at merging some of code with NCG.
 
- - handling of llvmvar or llvmtype for func sig isnt nice. Whole func sig handling
- could be better really.
+ - handling of llvmvar or llvmtype for func sig isnt nice. Whole func sig
+ handling could be better really.
 
  - handling of global regs and custom calling convention ugly. Lots of very
  similar code, need to change to handle multiple architectures easily.
@@ -91,4 +85,18 @@ BUGS
  generating correct code. All system calls must be 16 byte aligned in OS X
  and llvm isn't respecting this. Not sure if its a bug in LLVM or due to my
  changes to llvm.
+
+ - LLVM requires all control flow to be explicit, incluiding 'ret void'.
+ Cmm doesn't, ret void is assumed like in C. For most code this is fine as with
+ CPS all the blocks are ended with tail calls or branhces. However with the
+ handwritten Cmm it can occur although currently all cases are handled
+ correctly. NOTE: This does manifest! Happens on x86-64 for handwritten
+ cmm code! Causes failure when trying to bootstrap GHC.
+
+ - If a function is initially used as a label (e.g the address of it is taken)
+ then the code generator creates an external reference label for it. Later
+ if that function is called directly as a funciton then as it has previously
+ been defined as a function the code generator gets confused and creates
+ an invalid bitcast. Could either look to redefine the function label when
+ more information is encountered, or just fix up the bitcast.
 

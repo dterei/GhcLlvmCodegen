@@ -238,7 +238,41 @@ cmmToCmm :: RawCmmTop -> RawCmmTop
 cmmToCmm top@(CmmData _ _) = top
 cmmToCmm (CmmProc info lbl params (ListGraph blocks)) =
     let blocks' = map cmmBlockConFold (cmmMiniInline blocks)
-    in CmmProc info lbl params (ListGraph blocks')
+        front   = take (length blocks' - 1) blocks'
+        end     = cmmAddReturn $ last blocks'
+    in CmmProc info lbl params (ListGraph $ front ++ [end])
+
+cmmAddReturn :: CmmBasicBlock -> CmmBasicBlock
+cmmAddReturn blk@(BasicBlock id stmts) =
+    let front = take (length stmts - 1) stmts
+        end   = last stmts
+    in case end of
+        CmmNop -- strip out nop and check again
+            -> cmmAddReturn (BasicBlock id front)
+
+        CmmComment _ -- strip out comment and check again
+            -> cmmAddReturn (BasicBlock id front)
+
+        CmmCall _ _ _ _ _
+            -> blk
+
+        CmmBranch _
+            -> blk
+
+        CmmCondBranch _ _
+            -> blk
+
+        CmmSwitch _ _
+            -> blk
+
+        CmmJump _ _
+            -> blk
+
+        CmmReturn _
+            -> blk
+
+        _other
+            -> (BasicBlock id $ stmts ++ [(CmmReturn [])])
 
 cmmBlockConFold :: CmmBasicBlock -> CmmBasicBlock
 cmmBlockConFold (BasicBlock id stmts) =

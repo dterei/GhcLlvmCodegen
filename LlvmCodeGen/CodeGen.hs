@@ -146,7 +146,8 @@ stmtToInstrs env stmt = case stmt of
 
     -- CPS, only tail calls, no return's
     CmmReturn _
-        -> panic "stmtToInstrs: return statement should have been cps'd away"
+        -> return (env, [Return $ LMLocalVar "void" LMVoid], [])
+        -- -> panic "stmtToInstrs: return statement should have been cps'd away"
 
 
 -- | Foreign Calls
