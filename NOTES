@@ -78,7 +78,7 @@ Todo
  use a cleanup.
 
 
-BUGS
+Bugs
 ~~~~
 
  - foreign calls on Mac OS X don't work. Seems to be because LLVM isn't
@@ -99,4 +99,233 @@ BUGS
  been defined as a function the code generator gets confused and creates
  an invalid bitcast. Could either look to redefine the function label when
  more information is encountered, or just fix up the bitcast.
+
+Merge Problems
+~~~~~~~~~~~~~~
+
+== Ben Lippmeier ==
+
+Also, a minor point on commenting the code:
+With something like:
+
+-- | Blocks consist of
+--     * label: The code label for this block
+--     * stmts: A list of LlvmStatement's representing the code for this block.
+--              This list must end with a control flow. A return, tail call or
+--              branch to another LlvmBlock within the current function scope.
+data LlvmBlock = LlvmBlock {
+        blockLabel :: LlvmBlockId,
+        blockStmts :: [LlvmStatement]
+  }
+
+
+You should use haddock style comments to describe the field directly, eg
+
+-- | A block of LLVM code.
+data LlvmBlock = LlvmBlock {
+        -- | The code label for this block
+        blockLabel :: LlvmBlockId,     
+
+        -- | A list of LlvmStatement's representing the code for this block.
+        --   This list must end with a control flow. A return, tail call or
+        --   branch to another LlvmBlock within the current function scope.
+        blockStmts :: [LlvmStatement]
+  }
+
+== David Peixotto ==
+
+ - Nice if -ddump-llvm implies -fllvm
+ - Does it work with the -dynamic flag?
+
+== Simon Marlow ==
+
+Here's a patch review.  I think one round of feedback should be enough: most of my suggestions are cleanups or optimisations, there are very few XXX's.  On the whole the patch looks fine.  I haven't done a deep review of the code - there's quite a lot of it, and I'm not an LLVM expert, so this is a high-level review.
+
+In fact, I'm surprised at how much there is here.  The LLVM backend has more in common with the native code generators than the C backend, but I was expecting something closer to a straightforward pretty-printer.  I wonder if having a complete datatype for LLVM is really buying us anything since we don't actually do anything to it other than print it out.  As a quick example of what I mean, what would be lost if we replace
+
+ data LlvmCastOp
+   = LM_Trunc
+   | LM_Zext
+    ... lots of constructors ...
+   deriving (Eq)
+
+ instance Show LlvmCastOp where
+   show LM_Trunc    = "trunc"
+   show LM_Zext     = "zext"
+   ...
+
+with
+
+ type LlvmCastOp = FastString
+ lM_Trunc = fsLit "trunc"
+ ...
+
+?
+
+Do we envisage doing anything complex to the Llvm code inside GHC in the future?  I can't think of a reason to.
+
+Some of the cleanups and optimisations are quite significant.  Highlights:
+
+  * I think the module LlvmCodeGen.Regs can mostly go away.
+  * There are some obvious representation changes that would improve
+    performance (String -> FastString, [a] -> OrdList a).
+
+Review key:
+
+ XXX    This needs to be addressed before the patch goes in
+ CLEAN  A potential cleanup (some of these are quite major)
+ OPT    A possible optimisation
+
+Patch review follows:
+
+hunk ./compiler/ghc.cabal.in 44
++Flag llvm
++    Description: Build the LLVM code generator.
++    Default: False
++    Manual: True
+
+CLEAN Is there a good reason to want to disable the LLVM support, or
+can it always be compiled in?
+
++Flag unreg
++    Description: Build an unregistered version.
++    Default: False
++    Manual: True
++
+
+XXX Is this necessary?  As far as I'm aware an unregisterised build
+currently works.
+
+hunk ./compiler/ghc.cabal.in 101
++    if flag(llvm)
++        CPP-Options: -DLLVM
++        if flag(unreg)
++            CPP-Options: -DNO_REGS -DUSE_MINIINTERPRETER
+
+XXX Why is this necessary?  These CPP flags are added by GHC itself
+(StaticFlagParser.unregFlags).
+
++type LMString   = String
+
+OPT You probably want to use something better than String, perhaps
+FastString.
+
++-- | Llvm variables
++data LlvmVar
++  -- references to variables with a global scope.
++  = LMGlobalVar LMString LlvmType LlvmLinkageType
++  -- references to variables local for a function or parameters.
++  | LMLocalVar  LMString LlvmType
++  -- a constant variable
++  | LMLitVar  LlvmLit
+
+OPT Rather than LMString in LMLocalVar, probably Unique would be
+better.  I think you always generate these from a Unique (but I could
+be wrong) in which case it would be better to do that conversion when
+printing.  I'm not sure whether this applies to LMGlobalVar or not.
+
++  deriving (Eq)
++fixAssignsTop :: RawCmmTop -> UniqSM RawCmmTop
++
++fixAssignsTop top@(CmmData _ _) = returnUs top
++
++fixAssignsTop (CmmProc info lbl params (ListGraph blocks)) =
++    mapUs fixAssignsBlock blocks `thenUs` \ blocks' ->
++    returnUs (CmmProc info lbl params (ListGraph blocks'))
++
+
+CLEAN I think your local fixAssigns can go away  (see comment with
+LlvmCodeGen.Regs below): use the one from the NCG.
+
++cmmToCmm :: RawCmmTop -> RawCmmTop
++cmmToCmm top@(CmmData _ _) = top
++cmmToCmm (CmmProc info lbl params (ListGraph blocks)) =
++    let blocks'  = map cmmBlockConFold (cmmMiniInline blocks)
++        blocks'' = map cmmAddReturn blocks'
++    in CmmProc info lbl params (ListGraph $ blocks'')
++
+
+CLEAN I think your local cmmToCmm can go away (see comment with
+LlvmCodeGen.Regs below): use the one from the NCG.  We should also
+look into not doing any optimisation at the C-- level at all, since
+LLVM will do it all, however we do need to turn GlobalRegs into
+BaseReg offsets where necessary, which is done by cmmToCmm.
+
++type LlvmEnvMap = Map.Map LMString LlvmType
+
+OPT A Map of Strings is very inefficient compared with a UniqFM of
+FastStrings.
+
++type StmtData = (LlvmEnv, [LlvmStatement], [LlvmCmmTop])
+
+OPT Use OrdList rather than lists here, as you're doing a lot of
+appending.  Append is O(1) in OrdList, O(n) with lists.
+
++type ExprData = (LlvmEnv, LlvmVar, LlvmStatements, [LlvmCmmTop])
+
+OPT Again, LlvmStatements should probably be an OrdList.
+
+addfile ./compiler/llvmGen/LlvmCodeGen/Regs.hs
+hunk ./compiler/llvmGen/LlvmCodeGen/Regs.hs 1
++-- ----------------------------------------------------------------------------
++-- Deal with Cmm registers
++--
++-- Specifically, force use of register table (in memory), not pinned
++-- hardware registers as the LLVM back-end doesn't support this.
++--
++
++module LlvmCodeGen.Regs (
++
++        RealReg, realRegsOrdered, getRealRegReg, getRealRegArg, getGlobalRegAddr
++
++    ) where
+
+CLEAN Unless I'm mistaken, most of this module can go away.
+
+ 1. Use fixAssigns from the NCG.
+ 2. Print out GlobalRegs as "stg_whatever..."
+
+Then you don't need to bake in the register mapping (a maintenance
+headache), and a lot of this code can go away: the RealReg type and
+everything using it.
+
+
+addfile ./compiler/llvmGen/NOTES
+hunk ./compiler/llvmGen/NOTES 1
++LLVM Back-end for GHC.
++
++Author: David Terei
+
+CLEAN Useful-looking docs.  I suggest moving them into either (a) the wiki commentary or (b) the code as appropriate.
+
+hunk ./compiler/main/CodeOutput.lhs 16
++#ifdef LLVM
++#ifdef OMIT_NATIVE_CODEGEN
++import UniqSupply    ( mkSplitUniqSupply )
++#endif
++import qualified LlvmCodeGen ( llvmCodeGen )
++#endif
++
+hunk ./compiler/main/CodeOutput.lhs 90
++             HscLlvm        -> outputLlvm dflags filenm flat_abstractC;
+hunk ./compiler/main/CodeOutput.lhs 176
++%************************************************************************
++%*                                    *
++\subsection{LLVM}
++%*                                    *
++%************************************************************************
++
++\begin{code}
++outputLlvm :: DynFlags -> FilePath -> [RawCmm] -> IO ()
++
++#ifdef LLVM
++
++outputLlvm dflags filenm flat_absC
++  = do ncg_uniqs <- mkSplitUniqSupply 'n'
++       doOutput filenm $ \f ->
++             LlvmCodeGen.llvmCodeGen dflags f ncg_uniqs flat_absC
++
++#else /* !LLVM */
+
+CLEAN suggest removing the #ifdefs and enabling LLVM unconditionally, as above. 
 
