@@ -13,7 +13,7 @@ module LlvmCodeGen.Base (
         funLookup, funInsert,
 
         cmmToLlvmType, widthToLlvmFloat, widthToLlvmInt, llvmFunTy,
-        llvmFunSig, llvmStdFunAttrs, llvmPtrBits,
+        llvmFunSig, llvmStdFunAttrs, llvmPtrBits, llvmGhcCC,
 
         strBlockId_llvm, strCLabel_llvm,
         genCmmLabelRef, genStringLabelRef, llvmSDoc
@@ -73,18 +73,22 @@ widthToLlvmFloat w    = panic $ "widthToLlvmFloat: Invalid float size, " ++ show
 widthToLlvmInt :: Width -> LlvmType
 widthToLlvmInt w = LMInt $ widthInBits w
 
+-- | GHC Call Convention for LLVM
+llvmGhcCC :: LlvmCallConvention
+llvmGhcCC = CC_Ncc 70
+
 -- | Llvm Function type for Cmm function
 llvmFunTy :: LlvmType
 llvmFunTy
   = LMFunction $
-        LlvmFunctionDecl "a" ExternallyVisible CC_Fastcc LMVoid FixedArgs
+        LlvmFunctionDecl "a" ExternallyVisible llvmGhcCC LMVoid FixedArgs
             (Left $ map getVarType llvmFunArgs)
 
 -- | Llvm Function signature
 llvmFunSig :: CLabel -> LlvmLinkageType -> LlvmFunctionDecl
 llvmFunSig lbl link
   = let n = strCLabel_llvm lbl
-    in LlvmFunctionDecl n link CC_Fastcc LMVoid FixedArgs
+    in LlvmFunctionDecl n link llvmGhcCC LMVoid FixedArgs
         (Right llvmFunArgs)
 
 -- | A Function's arguments

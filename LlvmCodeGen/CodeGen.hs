@@ -212,13 +212,13 @@ genCall env target res args ret = do
 #else
             StdCallConv  -> CC_Ccc
 #endif
-            CmmCallConv  -> CC_Fastcc
+            CmmCallConv  -> llvmGhcCC
             PrimCallConv -> CC_Ccc
 
     -- stg reg handling
     let stgArgTy = [llvmWord, llvmWord, llvmWord, llvmWord]
     (stgRegs, stgStmts) <- case lmconv of
-            CC_Fastcc -> loadStgRegs
+            llvmGhcCC -> loadStgRegs
             _other    -> return ([], [])
                                
     {-
@@ -236,8 +236,8 @@ genCall env target res args ret = do
     -- fun types
     let ccTy  = StdCall -- tail calls should be done through CmmJump
     let retTy = ret_type res
-    let argTy | lmconv == CC_Fastcc = Left $ stgArgTy ++ (map arg_type args)
-              | otherwise           = Left $ map arg_type args
+    let argTy | lmconv == llvmGhcCC = Left $ stgArgTy ++ (map arg_type args)
+              | otherwise             = Left $ map arg_type args
     let funTy name = LMFunction $
             LlvmFunctionDecl name ExternallyVisible lmconv retTy FixedArgs argTy
 
