@@ -199,32 +199,26 @@ genCall env target res args ret = do
         ret_type t = panic $ "genCall: Too many return values! Can only handle"
                         ++ " 0 or 1, given " ++ show (length t) ++ "."
 
-    -- extract call convention
-    let conv = case target of
+    -- extract cmm call convention
+    let cconv = case target of
             CmmCallee _ conv -> conv
             CmmPrim   _      -> PrimCallConv
 
-    -- get llvm call convention
-    let lmconv = case conv of
-            CCallConv    -> CC_Ccc
+    -- translate to llvm call convention
+    let lmconv = case cconv of
 #if i386_TARGET_ARCH || x86_64_TARGET_ARCH
             StdCallConv  -> CC_X86_Stdcc
 #else
             StdCallConv  -> CC_Ccc
 #endif
-            CmmCallConv  -> llvmGhcCC
+            CCallConv    -> CC_Ccc
             PrimCallConv -> CC_Ccc
+            CmmCallConv  -> panic "CmmCallConv not supported here!"
 
-    -- stg reg handling
-    let stgArgTy = [llvmWord, llvmWord, llvmWord, llvmWord]
-    (stgRegs, stgStmts) <- case lmconv of
-            llvmGhcCC -> loadStgRegs
-            _other    -> return ([], [])
-                               
     {-
         Some of the possibilities here are a worry with the use of a custom
         calling convention for passing STG args. In practice the more
-        dangerous combinations (e.g StdCall + CC_Fastcc) don't occur.
+        dangerous combinations (e.g StdCall + llvmGhcCC) don't occur.
 
         The native code generator only handles StdCall and CCallConv.
     -}
@@ -233,16 +227,15 @@ genCall env target res args ret = do
     let fnAttrs | ret == CmmNeverReturns = NoReturn : llvmStdFunAttrs
                 | otherwise              = llvmStdFunAttrs
 
-    -- fun types
+    -- fun type
     let ccTy  = StdCall -- tail calls should be done through CmmJump
     let retTy = ret_type res
-    let argTy | lmconv == llvmGhcCC = Left $ stgArgTy ++ (map arg_type args)
-              | otherwise             = Left $ map arg_type args
+    let argTy = Left $ map arg_type args
     let funTy name = LMFunction $
             LlvmFunctionDecl name ExternallyVisible lmconv retTy FixedArgs argTy
 
     -- get paramter values
-    (env1, argVars, stmts1, top1) <- arg_vars env args (stgRegs, [], [])
+    (env1, argVars, stmts1, top1) <- arg_vars env args ([], [], [])
 
     -- get the return register
     let ret_reg ([CmmHinted reg hint]) = (reg, hint)
@@ -304,13 +297,13 @@ genCall env target res args ret = do
     case retTy of
         LMVoid -> do
             let s1 = Expr $ Call ccTy fptr argVars fnAttrs
-            let allStmts = stmts1 ++ stmts2 ++ stgStmts ++ [s1] ++ retStmt
+            let allStmts = stmts1 ++ stmts2 ++ [s1] ++ retStmt
             return (env2, allStmts, top1 ++ top2)
 
         _ -> do
             let (creg, _) = ret_reg res
             let (env3, vreg, stmts3, top3) = getCmmReg env2 (CmmLocal creg)
-            let allStmts = stmts1 ++ stmts2 ++ stmts3 ++ stgStmts
+            let allStmts = stmts1 ++ stmts2 ++ stmts3
             (v1, s1) <- doExpr retTy $ Call ccTy fptr argVars fnAttrs
             if retTy == pLower (getVarType vreg)
                 then do
