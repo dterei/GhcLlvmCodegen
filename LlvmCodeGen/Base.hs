@@ -75,7 +75,7 @@ widthToLlvmInt w = LMInt $ widthInBits w
 
 -- | GHC Call Convention for LLVM
 llvmGhcCC :: LlvmCallConvention
-llvmGhcCC = CC_Ncc 70
+llvmGhcCC = CC_Ncc 10
 
 -- | Llvm Function type for Cmm function
 llvmFunTy :: LlvmType
