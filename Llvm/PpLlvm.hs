@@ -1,9 +1,10 @@
 --------------------------------------------------------------------------------
--- Prettyprint an LLVM Module.
+-- | Pretty print LLVM IR Code.
 --
 
 module Llvm.PpLlvm (
 
+    -- * Top level LLVM objects.
     ppLlvmModule,
     ppLlvmComments,
     ppLlvmComment,
@@ -11,12 +12,12 @@ module Llvm.PpLlvm (
     ppLlvmConstant,
     ppLlvmGlobals,
     ppLlvmGlobal,
+    ppLlvmType,
+    ppLlvmTypes,
     ppLlvmFunctionDecls,
     ppLlvmFunctionDecl,
     ppLlvmFunctions,
-    ppLlvmFunction,
-    ppLlvmType,
-    ppLlvmTypes
+    ppLlvmFunction
 
     ) where
 
@@ -27,8 +28,12 @@ import Llvm.Types
 
 import Data.List ( intersperse )
 import Pretty
--- import Text.PrettyPrint.HughesPJ
 
+--------------------------------------------------------------------------------
+-- * Top Level Print functions
+--------------------------------------------------------------------------------
+
+-- | Print out a whole LLVM module.
 ppLlvmModule :: LlvmModule -> Doc
 ppLlvmModule (LlvmModule comments constants globals decls funcs)
   = ppLlvmComments comments
@@ -40,43 +45,64 @@ ppLlvmModule (LlvmModule comments constants globals decls funcs)
     $+$ empty
     $+$ ppLlvmFunctions funcs
 
-
+-- | Print out a multi-line comment, can be inside a function or on its own
 ppLlvmComments :: [LMString] -> Doc
 ppLlvmComments comments = vcat $ map ppLlvmComment comments
 
+-- | Print out a comment, can be inside a function or on its own
 ppLlvmComment :: LMString -> Doc
 ppLlvmComment com = semi <+> (text com)
 
 
-ppLlvmGlobal :: LMGlobal -> Doc
-ppLlvmGlobal (var@(LMGlobalVar _ _ _), Nothing) =
-  (text $ getName var) <+> (equals <+> (text $ show $ getLink var)
-      <+> text "global") <+> (text $ show (pLower $ getVarType var))
-
-ppLlvmGlobal (var@(LMGlobalVar _ _ _), (Just stat)) =
-  (text $ getName var) <+> (equals <+> (text $ show $ getLink var)
-      <+> text "global") <+> (text $ show stat)
-
-ppLlvmGlobal oth = error $ "Non Global var ppr as global! " ++ show oth
-
+-- | Print out a list of global mutable variable definitions
 ppLlvmGlobals :: [LMGlobal] -> Doc
 ppLlvmGlobals ls = vcat $ map ppLlvmGlobal ls
 
+-- | Print out a global mutable variable definition
+ppLlvmGlobal :: LMGlobal -> Doc
+ppLlvmGlobal (var@(LMGlobalVar _ _ link), Nothing) =
+    ppAssignment var $ text (show link) <+> text "global" <+>
+        (text $ show (pLower $ getVarType var))
 
+ppLlvmGlobal (var@(LMGlobalVar _ _ link), (Just stat)) =
+    ppAssignment var $ text (show link) <+> text "global" <+> text (show stat)
+
+ppLlvmGlobal oth = error $ "Non Global var ppr as global! " ++ show oth
+
+
+-- | Print out a list global constant variable
 ppLlvmConstants :: [LMConstant] -> Doc
 ppLlvmConstants cons = vcat $ map ppLlvmConstant cons
 
+-- | Print out a global constant variable
 ppLlvmConstant :: LMConstant -> Doc
-ppLlvmConstant (dst@(LMGlobalVar _ _ link),src) =
-    ppAssignment dst $ text (show link) <+> text ("constant")
-        <+> text (show src)
+ppLlvmConstant (dst@(LMGlobalVar _ _ link), src) =
+    ppAssignment dst $ text (show link) <+> text "constant" <+> text (show src)
 
 ppLlvmConstant c = error $ "Non global var as constant! " ++ show c
 
 
+-- | Print out a list of LLVM type aliases.
+ppLlvmTypes :: [LlvmType] -> Doc
+ppLlvmTypes tys = vcat $ map ppLlvmType tys
+
+-- | Print out an LLVM type alias.
+ppLlvmType :: LlvmType -> Doc
+
+ppLlvmType al@(LMAlias _ t)
+  = (text $ show al) <+> equals <+> (text "type") <+> (text $ show t)
+
+ppLlvmType (LMFunction t)
+  = ppLlvmFunctionDecl t
+
+ppLlvmType _ = empty
+
+
+-- | Print out a list of function definitions.
 ppLlvmFunctions :: LlvmFunctions -> Doc
 ppLlvmFunctions funcs = vcat $ map ppLlvmFunction funcs
 
+-- | Print out a function definition.
 ppLlvmFunction :: LlvmFunction -> Doc
 ppLlvmFunction (LlvmFunction dec attrs body) =
     let attrDoc = ppSpaceJoin attrs
@@ -87,13 +113,19 @@ ppLlvmFunction (LlvmFunction dec attrs body) =
         $+$ rbrace
 
 
+-- | Print out a list of function declaration.
 ppLlvmFunctionDecls :: LlvmFunctionDecls -> Doc
 ppLlvmFunctionDecls decs = vcat $ map ppLlvmFunctionDecl decs
 
-
+-- | Print out a function declaration.
+-- Declarations define the function type but don't define the actual body of
+-- the function.
 ppLlvmFunctionDecl :: LlvmFunctionDecl -> Doc
 ppLlvmFunctionDecl dec = (text "declare") <+> ppLlvmFuncDecSig dec
 
+-- | Print out a functions type signature.
+-- This differs from [ppLlvmFunctionDecl] in that it is used for both function
+-- declarations and defined functions to print out the type.
 ppLlvmFuncDecSig :: LlvmFunctionDecl -> Doc
 ppLlvmFuncDecSig (LlvmFunctionDecl name link cc retTy argTy params)
   = let linkTxt = show link
@@ -107,29 +139,19 @@ ppLlvmFuncDecSig (LlvmFunctionDecl name link cc retTy argTy params)
       <+> atsym <> (text name) <> lparen <+> ppParams <+> rparen
 
 
+-- | Print out a list of LLVM blocks.
 ppLlvmBlocks :: LlvmBlocks -> Doc
 ppLlvmBlocks blocks = vcat $ map ppLlvmBlock blocks
 
+-- | Print out an LLVM block.
+-- It must be part of a function definition.
 ppLlvmBlock :: LlvmBlock -> Doc
 ppLlvmBlock (LlvmBlock blockId stmts)
   = ppLlvmStatement (MkLabel blockId)
         $+$ nest 4 (vcat $ map  ppLlvmStatement stmts)
 
 
-ppLlvmTypes :: [LlvmType] -> Doc
-ppLlvmTypes tys = vcat $ map ppLlvmType tys
-
-ppLlvmType :: LlvmType -> Doc
-
-ppLlvmType al@(LMAlias _ t)
-  = (text $ show al) <+> equals <+> (text "type") <+> (text $ show t)
-
-ppLlvmType (LMFunction t)
-  = ppLlvmFunctionDecl t
-
-ppLlvmType _ = empty
-
-
+-- | Print out an LLVM statement.
 ppLlvmStatement :: LlvmStatement -> Doc
 ppLlvmStatement stmt
   = case stmt of
@@ -145,6 +167,7 @@ ppLlvmStatement stmt
         Unreachable               -> text "unreachable"
 
 
+-- | Print out an LLVM expression.
 ppLlvmExpression :: LlvmExpression -> Doc
 ppLlvmExpression expr
   = case expr of
@@ -160,10 +183,10 @@ ppLlvmExpression expr
 
 
 --------------------------------------------------------------------------------
--- Print functions
+-- * Individual print functions
 --------------------------------------------------------------------------------
 
--- Should always be a function pointer. So a global var of function type
+-- | Should always be a function pointer. So a global var of function type
 -- (since globals are always pointers) or a local var of pointer function type.
 ppCall :: LlvmCallType -> LlvmVar -> [LlvmVar] -> [LlvmFuncAttr] -> Doc
 ppCall ct fptr vals attrs = case fptr of
@@ -282,7 +305,7 @@ ppSwitch scrut dflt targets =
 
 
 --------------------------------------------------------------------------------
--- Misc functions
+-- * Misc functions
 --------------------------------------------------------------------------------
 atsym :: Doc
 atsym = text "@"

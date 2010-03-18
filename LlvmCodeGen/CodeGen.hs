@@ -1,5 +1,5 @@
 -- ----------------------------------------------------------------------------
--- Handle conversion of CmmProc to LLVM code.
+-- | Handle conversion of CmmProc to LLVM code.
 --
 
 module LlvmCodeGen.CodeGen ( genLlvmProc ) where
@@ -25,7 +25,7 @@ import Unique
 import Util
 
 -- -----------------------------------------------------------------------------
--- Top-level of the llvm proc codegen
+-- | Top-level of the llvm proc codegen
 --
 genLlvmProc :: LlvmEnv -> RawCmmTop -> UniqSM (LlvmEnv, [LlvmCmmTop])
 genLlvmProc env (CmmData _ _)
@@ -45,7 +45,7 @@ genLlvmProc env (CmmProc info lbl params (ListGraph blocks))
 
 
 -- -----------------------------------------------------------------------------
--- Block code generation
+-- * Block code generation
 --
 
 -- | Generate code for a list of blocks that make up a complete procedure.
@@ -99,10 +99,10 @@ dominateAllocs (BasicBlock id stmts)
 
 
 -- -----------------------------------------------------------------------------
--- CmmStmt code generation
+-- * CmmStmt code generation
 --
 
--- A statement conversion retrun.
+-- A statement conversion return data.
 --   * LlvmEnv: The new enviornment
 --   * LlvmStatement: The compiled llvm statements.
 --   * LlvmCmmTop: Any global data needed.
@@ -121,7 +121,6 @@ stmtsToInstrs env (stmt : stmts) (llvm, top)
 
 
 -- | Convert a CmmStmt to a list of LlvmStatement's
---
 stmtToInstrs :: LlvmEnv -> CmmStmt
              -> UniqSM StmtData
 stmtToInstrs env stmt = case stmt of
@@ -137,23 +136,22 @@ stmtToInstrs env stmt = case stmt of
     CmmCondBranch arg id -> genCondBranch env arg id
     CmmSwitch arg ids    -> genSwitch env arg ids
 
-    -- Foreign Call
+    -- | Foreign Call
     CmmCall target res args _ ret
         -> genCall env target res args ret
 
-    -- Tail call
+    -- | Tail call
     CmmJump arg _ -> genJump env arg
 
-    -- CPS, only tail calls, no return's
+    -- | CPS, only tail calls, no return's
     CmmReturn _
         -> return (env, [Return $ LMLocalVar "void" LMVoid], [])
         -- -> panic "stmtToInstrs: return statement should have been cps'd away"
 
 
 -- | Foreign Calls
---
-genCall :: LlvmEnv -> CmmCallTarget -> HintedCmmFormals -> HintedCmmActuals -> CmmReturnInfo
-        -> UniqSM StmtData
+genCall :: LlvmEnv -> CmmCallTarget -> HintedCmmFormals -> HintedCmmActuals
+		  -> CmmReturnInfo -> UniqSM StmtData
 
 -- Write barrier needs to be handled specially as it is implemented as an llvm
 -- intrinsic function.
@@ -222,7 +220,7 @@ genCall env target res args ret = do
 
         The native code generator only handles StdCall and CCallConv.
     -}
-   
+
     -- call attributes
     let fnAttrs | ret == CmmNeverReturns = NoReturn : llvmStdFunAttrs
                 | otherwise              = llvmStdFunAttrs
@@ -284,7 +282,8 @@ genCall env target res args ret = do
 
             CmmPrim mop -> do
                 let name = cmmPrimOpFunctions mop
-                let lbl  = mkForeignLabel name Nothing ForeignLabelInExternalPackage IsFunction
+                let lbl  = mkForeignLabel name Nothing
+											ForeignLabelInExternalPackage IsFunction
                 getFunPtr $ CmmCallee (CmmLit (CmmLabel lbl)) CCallConv
 
     (env2, fptr, stmts2, top2) <- getFunPtr target
@@ -325,8 +324,10 @@ genCall env target res args ret = do
                             top1 ++ top2 ++ top3)
 
 
--- Conversion of call arguments.
-arg_vars :: LlvmEnv -> HintedCmmActuals -> ([LlvmVar], [LlvmStatement], [LlvmCmmTop])
+-- | Conversion of call arguments.
+arg_vars :: LlvmEnv
+         -> HintedCmmActuals
+         -> ([LlvmVar], [LlvmStatement], [LlvmCmmTop])
          -> UniqSM (LlvmEnv, [LlvmVar], [LlvmStatement], [LlvmCmmTop])
 
 arg_vars env [] (vars, stmts, tops)
@@ -348,7 +349,7 @@ arg_vars env (CmmHinted e _:rest) (vars, stmts, tops)
   = do (env', v1, stmts', top') <- exprToVar env e
        arg_vars env' rest (vars ++ [v1], stmts ++ stmts', tops ++ top')
 
--- Decide what C function to use to implement a CallishMachOp
+-- | Decide what C function to use to implement a CallishMachOp
 cmmPrimOpFunctions :: CallishMachOp -> FastString
 cmmPrimOpFunctions mop
  = case mop of
@@ -388,9 +389,8 @@ cmmPrimOpFunctions mop
 
     a -> panic $ "cmmPrimOpFunctions: Unknown callish op! (" ++ show a ++ ")"
 
-    
+
 -- | Tail function calls
---
 genJump :: LlvmEnv -> CmmExpr -> UniqSM StmtData
 
 -- Call to known function
@@ -474,9 +474,8 @@ genCondBranch env cond idT = do
 
 -- | Switch branch
 --
---   N.B. we remove Nothing's from the list of branches, as they are
---   'undefined'. However, they may be defined one day, so we better document
---   this behaviour.
+-- N.B. we remove Nothing's from the list of branches, as they are 'undefined'.
+-- However, they may be defined one day, so we better document this behaviour.
 genSwitch :: LlvmEnv -> CmmExpr -> [Maybe BlockId] -> UniqSM StmtData
 genSwitch env cond maybe_ids = do
     (env', vc, stmts, top) <- exprToVar env cond
@@ -492,10 +491,10 @@ genSwitch env cond maybe_ids = do
 
 
 -- -----------------------------------------------------------------------------
--- CmmExpr code generation
+-- * CmmExpr code generation
 --
 
--- An expression conversion return.
+-- | An expression conversion return data:
 --   * LlvmEnv: The new enviornment
 --   * LlvmVar: The var holding the result of the expression
 --   * LlvmStatements: Any statements needed to evaluate the expression
@@ -520,7 +519,7 @@ wordOption = EOption (Just llvmWord)
 
 
 -- | Convert a CmmExpr to a list of LlvmStatements with the result of the
---   expression being stored in the returned LlvmVar.
+-- expression being stored in the returned LlvmVar.
 exprToVar :: LlvmEnv -> CmmExpr -> UniqSM ExprData
 exprToVar env = exprToVarOpt env wordOption
 
@@ -662,17 +661,19 @@ genMachOp env opt op [x, y] = case op of
                     return (env2, v1, stmts1 ++ stmts2 ++ [s1], top1 ++ top2)
 
                 else do
-                    -- error. continue anyway so we can debug the generated ll file.
+                    -- XXX: Error. continue anyway so we can debug the generated
+						  -- ll file.
                     let dx = Comment $ lines.show.llvmSDoc.PprCmm.pprExpr $ x
                     let dy = Comment $ lines.show.llvmSDoc.PprCmm.pprExpr $ y
                     (v1, s1) <- doExpr (ty vx) $ binOp vx vy
-                    return (env2, v1, stmts1 ++ stmts2 ++ [dx,dy,s1], top1 ++ top2)
+                    let allStmts = stmts1 ++ stmts2 ++ [dx,dy,s1]
+                    return (env2, v1, allStmts, top1 ++ top2)
 
                     -- let o = case binOp vx vy of
                     --         Compare op _ _ -> show op
                     --         LlvmOp  op _ _ -> show op
                     --         _              -> "unknown"
-                    -- panic $ "genMachOp: comparison between different types! ("
+                    -- panic $ "genMachOp: comparison between different types ("
                     --         ++ o ++ " "++ show vx ++ ", " ++ show vy ++ ")"
                     --         ++ "\ne1: " ++ (show.llvmSDoc.PprCmm.pprExpr $ x)
                     --         ++ "\ne2: " ++ (show.llvmSDoc.PprCmm.pprExpr $ y)
@@ -706,9 +707,9 @@ genMachOp env opt op [x, y] = case op of
         genBinMach op = binLlvmOp getVarType (LlvmOp op)
 
         -- | Detect if overflow will occur in signed multiply of the two
-        --   CmmExpr's. This is the LLVM assembly equivalent of the NCG
-        --   implementation. Its much longer due to type information/safety.
-        --   This should actually compile to only about 3 asm instructions.
+        -- CmmExpr's. This is the LLVM assembly equivalent of the NCG
+        -- implementation. Its much longer due to type information/safety.
+        -- This should actually compile to only about 3 asm instructions.
         isSMulOK :: Width -> CmmExpr -> CmmExpr -> UniqSM ExprData
         isSMulOK _ x y = do
             (env1, vx, stmts1, top1) <- exprToVar env x
@@ -854,9 +855,8 @@ genLit _ CmmHighStackMark
 
 
 -- -----------------------------------------------------------------------------
--- Misc
+-- * Misc
 --
-
 
 -- | Load stg registers
 loadStgRegs :: UniqSM ([LlvmVar], [LlvmStatement])
@@ -942,7 +942,7 @@ mkIntLit :: Integral a => a -> LlvmType -> LlvmVar
 mkIntLit i ty = LMLitVar $ LMIntLit (toInteger i) ty
 
 
--- | error function
+-- | Error function
 panic :: String -> a
 panic s = Outputable.panic $ "LlvmCodeGen.CodeGen." ++ s
 

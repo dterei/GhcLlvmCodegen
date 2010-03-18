@@ -1,5 +1,5 @@
 -- ----------------------------------------------------------------------------
--- Pretty print LLVM
+-- | Pretty print helpers for the LLVM Code generator.
 --
 
 module LlvmCodeGen.Ppr (
@@ -19,10 +19,10 @@ import DynFlags
 import Pretty
 
 -- ----------------------------------------------------------------------------
--- Top level
+-- * Top level
 --
 
--- LLVM module layout description
+-- | LLVM module layout description for the host target
 moduleLayout :: Doc
 moduleLayout = 
 #ifdef i386_TARGET_ARCH

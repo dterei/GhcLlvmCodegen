@@ -1,52 +1,54 @@
 --------------------------------------------------------------------------------
--- The LLVM abstract syntax.
+-- | The LLVM abstract syntax.
 --
 
 module Llvm.AbsSyn where
-
-#include "HsVersions.h"
 
 import Llvm.Types
 
 -- | Block labels
 type LlvmBlockId = LMString
 
--- | Blocks consist of
---     * label: The code label for this block
---     * stmts: A list of LlvmStatement's representing the code for this block.
---              This list must end with a control flow. A return, tail call or
---              branch to another LlvmBlock within the current function scope.
+-- | A block of LLVM code.
 data LlvmBlock = LlvmBlock {
-        blockLabel :: LlvmBlockId,
-        blockStmts :: [LlvmStatement]
+    -- | The code label for this block
+    blockLabel :: LlvmBlockId,
+
+    -- | A list of LlvmStatement's representing the code for this block.
+    -- This list must end with a control flow statement.
+    blockStmts :: [LlvmStatement]
   }
 
 type LlvmBlocks = [LlvmBlock]
 
--- | Modules consist of
---    * comments:  Just plain comments added to the Llvm IR.
---    * constants: The first element of the tuple is the declaration of the
---                 constant while the second element is the value of the
---                 constant.
---    * globals:   Global modifiable variables.
---    * fwdDecls:  Functions used in this module, defined in other modules.
---    * funcs:     Functions defined in this module.
+-- | An LLVM Module. This is a top level contianer in LLVM.
 data LlvmModule = LlvmModule  {
-        modComments  :: [LMString],
-        modConstants :: [LMConstant],
-        modGlobals   :: [LMGlobal],
-        modFwdDecls  :: LlvmFunctionDecls,
-        modFuncs     :: LlvmFunctions
+    -- | Comments to include at the start of the module.
+    modComments  :: [LMString],
+
+    -- | Constants to include in the module.
+    modConstants :: [LMConstant],
+
+    -- | Global variables to include in the module.
+    modGlobals   :: [LMGlobal],
+
+    -- | LLVM Functions used in this module but defined in other modules.
+    modFwdDecls  :: LlvmFunctionDecls,
+
+    -- | LLVM Functions defined in this module.
+    modFuncs     :: LlvmFunctions
   }
 
--- | Functions have
---    * funcDecl:  The signature of this declared function.
---    * funcAttrs: The function attributes.
---    * body:     The body of the functions.
+-- | An LLVM Function
 data LlvmFunction = LlvmFunction {
-        funcDecl    :: LlvmFunctionDecl,
-        funcAttrs   :: [LlvmFuncAttr],
-        funcBody    :: LlvmBlocks
+    -- | The signature of this declared function.
+    funcDecl    :: LlvmFunctionDecl,
+
+    -- | The function attributes.
+    funcAttrs   :: [LlvmFuncAttr],
+
+    -- | The body of the functions.
+    funcBody    :: LlvmBlocks
   }
 
 type LlvmFunctions  = [LlvmFunction]
@@ -54,22 +56,19 @@ type LlvmFunctions  = [LlvmFunction]
 
 -- | Llvm Statements
 data LlvmStatement
-  {-
-    Assignment
-    Assign an expression to an variable
+  {- |
+    Assign an expression to an variable:
       * dest:   Variable to assign to
       * source: Source expression
   -}
   = Assignment LlvmVar LlvmExpression
 
-  {-
-    Branch
+  {- |
     Always branch to the target label
   -}
   | Branch LlvmVar
 
-  {-
-    BranchIf
+  {- |
     Branch to label targetTrue if cond is true otherwise to label targetFalse
       * cond:        condition that will be tested, must be of type i1
       * targetTrue:  label to branch to if cond is true
@@ -77,29 +76,28 @@ data LlvmStatement
   -}
   | BranchIf LlvmVar LlvmVar LlvmVar
 
-  {-
+  {- |
     Comment
     Plain comment.
   -}
   | Comment [LMString]
 
-  {-
-    Label
+  {- |
     Set a label on this position.
       * name: Identifier of this label, unique for this module
   -}
   | MkLabel LMString
 
-  {-
-    Store
+  {- |
     Store variable value in pointer ptr. If value is of type t then ptr must
     be of type t*.
       * value: Variable/Constant to store.
       * ptr:   Location to store the value in
   -}
   | Store LlvmVar LlvmVar
-  {-
-    Switch
+
+  {- |
+    Mutliway branch
       * scrutinee: Variable or constant which must be of integer type that is
                    determines which arm is chosen.
       * def:       The default label if there is no match in target.
@@ -109,22 +107,20 @@ data LlvmStatement
   -}
   | Switch LlvmVar LlvmVar [(LlvmVar, LlvmVar)]
 
-  {-
-    Return
+  {- |
+    Return a result.
       * result: The variable or constant to return
   -}
   | Return LlvmVar
 
-  {-
-    Unreachable
-      An instruction for the optimizer that the code following is not reachable
+  {- |
+    An instruction for the optimizer that the code following is not reachable
   -}
   | Unreachable
 
-  {-
-    Expr
-      Raise an expression to a statement (if don't want result or want to use
-      Llvm unamed values.
+  {- |
+    Raise an expression to a statement (if don't want result or want to use
+    Llvm unamed values.
   -}
   | Expr LlvmExpression
 
@@ -134,16 +130,14 @@ type LlvmStatements = [LlvmStatement]
 
 -- | Llvm Expressions
 data LlvmExpression
-  {-
-    Alloca
+  {- |
     Allocate amount * sizeof(tp) bytes on the stack
       * tp:     LlvmType to reserve room for
       * amount: The nr of tp's which must be allocated
   -}
   = Alloca LlvmType Int
 
-  {-
-    LlvmOp
+  {- |
     Perform the machine operator op on the operands left and right
       * op:    operator
       * left:  left operand
@@ -151,8 +145,7 @@ data LlvmExpression
   -}
   | LlvmOp LlvmMachOp LlvmVar LlvmVar
 
-  {-
-    Compare
+  {- |
     Perform a compare operation on the operands left and right
       * op:    operator
       * left:  left operand
@@ -160,22 +153,19 @@ data LlvmExpression
   -}
   | Compare LlvmCmpOp LlvmVar LlvmVar
 
-  {-
-    Malloc
+  {- |
     Allocate amount * sizeof(tp) bytes on the heap
       * tp:     LlvmType to reserve room for
       * amount: The nr of tp's which must be allocated
   -}
   | Malloc LlvmType Int
 
-  {-
-    Load
+  {- |
     Load the value at location ptr
   -}
   | Load LlvmVar
 
-  {-
-    GetElemPtr
+  {- |
     Navigate in an structure, selecting elements
       * ptr:     Location of the structure
       * indexes: A list of indexes to select the correct value. For example
@@ -184,7 +174,7 @@ data LlvmExpression
   -}
   | GetElemPtr LlvmVar [Int]
 
-  {- Cast
+  {- |
      Cast the variable from to the to type. This is an abstraction of three
      cast operators in Llvm, inttoptr, prttoint and bitcast.
        * cast: Cast type
@@ -193,8 +183,7 @@ data LlvmExpression
   -}
   | Cast LlvmCastOp LlvmVar LlvmType
 
-  {-
-    Call
+  {- |
     Call a function. The result is the value of the expression.
       * tailJumps: CallType to signal if the function should be tail called
       * fnptrval:  An LLVM value containing a pointer to a function to be
@@ -205,8 +194,7 @@ data LlvmExpression
   -}
   | Call LlvmCallType LlvmVar [LlvmVar] [LlvmFuncAttr]
 
-  {-
-    Phi
+  {- |
     Merge variables from different basic blocks which are predecessors of this
     basic block in a new variable of type tp.
       * tp:         type of the merged variable, must match the types of the

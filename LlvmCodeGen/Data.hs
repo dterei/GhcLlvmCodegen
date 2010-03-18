@@ -1,5 +1,5 @@
 -- ----------------------------------------------------------------------------
--- Handle conversion of CmmData to LLVM code.
+-- | Handle conversion of CmmData to LLVM code.
 --
 
 module LlvmCodeGen.Data (
@@ -22,20 +22,21 @@ import Data.Maybe
 
 
 -- ----------------------------------------------------------------------------
--- Constants
+-- * Constants
 --
 
+-- | The string appended to a variable name to create its structure type alias
 structStr :: LMString
 structStr = "_struct"
 
 -- ----------------------------------------------------------------------------
--- Top level
+-- * Top level
 --
 
 -- | Pass a CmmStatic section to an equivalent Llvm code. Can't
---   complete this completely though as we need to pass all CmmStatic
---   sections before all references can be resolved. This last step is
---   done by 'resolveLlvmData'.
+-- complete this completely though as we need to pass all CmmStatic
+-- sections before all references can be resolved. This last step is
+-- done by 'resolveLlvmData'.
 genLlvmData :: DynFlags -> (Section, [CmmStatic]) -> LlvmUnresData
 genLlvmData _ ( _ , (CmmDataLabel lbl):xs) =
     let static  = map genData xs
@@ -74,7 +75,7 @@ resolveLlvmData _ env (lbl, alias, unres) =
 
 
 -- ----------------------------------------------------------------------------
--- Resolve Data/CLabel references
+-- ** Resolve Data/CLabel references
 --
 
 -- | Resolve data list
@@ -89,10 +90,11 @@ resDatas env (cmm : rest) (stats, globs)
     in resDatas env' rest (stats ++ [nstat], globs ++ nglob)
 
 -- | Resolve an individual static label if it needs to be.
---   We check the 'LlvmEnv' to see if the reference has been defined in this
---   module. If it has we can retrieve its type and make a pointer, otherwise
---   we introduce a generic external defenition for the referenced label and
---   then make a pointer.
+--
+-- We check the 'LlvmEnv' to see if the reference has been defined in this
+-- module. If it has we can retrieve its type and make a pointer, otherwise
+-- we introduce a generic external defenition for the referenced label and
+-- then make a pointer.
 resData :: LlvmEnv -> UnresStatic -> (LlvmEnv, LlvmStatic, [Maybe LMGlobal])
 
 resData env (Right stat) = (env, stat, [Nothing])
@@ -130,11 +132,11 @@ resData env (Left (CmmLabelDiffOff l1 l2 off)) =
 resData _ _ = panic "resData: Non CLabel expr as left type!"
 
 -- ----------------------------------------------------------------------------
--- Generate static data
+-- * Generate static data
 --
 
 -- | Handle static data
---   Don't handle CmmAlign or a CmmDataLabel.
+-- Don't handle 'CmmAlign' or a 'CmmDataLabel'.
 genData :: CmmStatic -> UnresStatic
 
 genData (CmmString str) =
@@ -156,8 +158,9 @@ genData (CmmDataLabel _)
 
 
 -- | Generate Llvm code for a static literal.
---   Will either generate the code or leave it unresolved if it is a CLabel
---   which isn't yet known.
+--
+-- Will either generate the code or leave it unresolved if it is a 'CLabel'
+-- which isn't yet known.
 genStaticLit :: CmmLit -> UnresStatic
 genStaticLit (CmmInt i w)
     = Right $ LMStaticLit (LMIntLit i (LMInt $ widthInBits w))
@@ -177,10 +180,10 @@ genStaticLit (CmmHighStackMark)
 
 
 -- -----------------------------------------------------------------------------
--- Misc
+-- * Misc
 --
 
--- | error function
+-- | Error Function
 panic :: String -> a
 panic s = Outputable.panic $ "LlvmCodeGen.Data." ++ s
 

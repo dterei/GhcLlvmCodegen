@@ -1,8 +1,5 @@
 -- ----------------------------------------------------------------------------
--- Deal with Cmm registers
---
--- Specifically, force use of register table (in memory), not pinned
--- hardware registers as the LLVM back-end doesn't support this.
+-- | Deal with Cmm registers
 --
 
 module LlvmCodeGen.Regs (
@@ -19,7 +16,8 @@ import Cmm
 import qualified CgUtils ( get_GlobalReg_addr )
 
 -- | A data type corresponding to the STG virtual registers.
---   These provide a hard implementation of the STG virtual registers.
+--
+-- These provide a hard implementation of the STG virtual registers.
 data RealReg
   = RR_Base
   | RR_Sp
@@ -101,10 +99,10 @@ getRealRegArg rr
         RR_D2    -> lmD2Arg
 
 
--- Llvm Version of STG registers.
--- HACK: could name conflict as not uniqued.
+-- * Llvm Version of STG registers.
+-- HACK: could name conflict as not unique.
 
--- reg versions used in a function
+-- ** Register versions used in a function
 lmBaseReg, lmSpReg, lmHpReg, lmR1Reg, lmR2Reg, lmR3Reg, lmR4Reg, lmR5Reg,
     lmR6Reg, lmSpLimReg, lmF1Reg, lmF2Reg, lmF3Reg, lmF4Reg, lmD1Reg,
     lmD2Reg:: LlvmVar
@@ -126,7 +124,7 @@ lmF4Reg    = LMLocalVar "stg_terei_f4Reg"  $ pLift LMFloat
 lmD1Reg    = LMLocalVar "stg_terei_d1Reg"  $ pLift LMDouble
 lmD2Reg    = LMLocalVar "stg_terei_d2Reg"  $ pLift LMDouble
 
--- argument versions used in function as arguments to pass registers
+-- ** Argument versions used in function as arguments to pass registers
 lmBaseArg, lmSpArg, lmHpArg, lmR1Arg, lmR2Arg, lmR3Arg, lmR4Arg, lmR5Arg,
     lmR6Arg, lmSpLimArg, lmF1Arg, lmF2Arg, lmF3Arg, lmF4Arg, lmD1Arg,
     lmD2Arg:: LlvmVar
@@ -149,12 +147,13 @@ lmD1Arg    = LMLocalVar "stg_terei_d1Arg"    LMDouble
 lmD2Arg    = LMLocalVar "stg_terei_d2Arg"    LMDouble
 
 
--- | We map STG registers onto an appropriate RealReg or CmmExpr.
---   RealReg is used when the STG register is pinned to a hardware register
---   and CmmExpr is used when it isn't and instead a load from the Register
---   table is used.
+-- | We map STG registers onto an appropriate 'RealReg' or 'CmmExpr'.
 --
---   See also getGlobalRegAddr in CgUtils.
+-- 'RealReg' is used when the STG register is pinned to a hardware register
+-- and 'CmmExpr' is used when it isn't and instead a load from the Register
+-- table is used.
+--
+-- See also 'getGlobalRegAddr' in 'CgUtils'.
 --
 getGlobalRegAddr :: GlobalReg -> Either RealReg CmmExpr
 getGlobalRegAddr r@(BaseReg       ) = regsOrTable RR_Base r

@@ -100,37 +100,18 @@ Bugs
  an invalid bitcast. Could either look to redefine the function label when
  more information is encountered, or just fix up the bitcast.
 
+Merge Questions
+~~~~~~~~~~~~~~~
+
+ - How to use code from NCG? e.g Should I add nativeGen to the llvm back-end
+ cabal.in hs-source-dirs list? How is the case of unregistered handled since
+ LLVM works in both modes but NCG isn't usually built in unregistered mode.
+
 Merge Problems
 ~~~~~~~~~~~~~~
 
-== Ben Lippmeier ==
-
-Also, a minor point on commenting the code:
-With something like:
-
--- | Blocks consist of
---     * label: The code label for this block
---     * stmts: A list of LlvmStatement's representing the code for this block.
---              This list must end with a control flow. A return, tail call or
---              branch to another LlvmBlock within the current function scope.
-data LlvmBlock = LlvmBlock {
-        blockLabel :: LlvmBlockId,
-        blockStmts :: [LlvmStatement]
-  }
-
-
-You should use haddock style comments to describe the field directly, eg
-
--- | A block of LLVM code.
-data LlvmBlock = LlvmBlock {
-        -- | The code label for this block
-        blockLabel :: LlvmBlockId,     
-
-        -- | A list of LlvmStatement's representing the code for this block.
-        --   This list must end with a control flow. A return, tail call or
-        --   branch to another LlvmBlock within the current function scope.
-        blockStmts :: [LlvmStatement]
-  }
+== ME ==
+Some of fp conversion code in Llvm/Types can be used from NCG isntead.
 
 == David Peixotto ==
 

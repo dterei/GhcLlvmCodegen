@@ -1,9 +1,6 @@
 -- -----------------------------------------------------------------------------
+-- | This is the top-level module in the LLVM code generator.
 --
--- This is the top-level module in the LLVM code generator.
---
-
-\begin{code}
 
 module LlvmCodeGen ( llvmCodeGen ) where
 
@@ -30,7 +27,7 @@ import UniqSupply
 import System.IO
 
 -- -----------------------------------------------------------------------------
--- Top-level of the llvm codegen
+-- | Top-level of the llvm codegen
 --
 llvmCodeGen :: DynFlags -> Handle -> UniqSupply -> [RawCmm] -> IO ()
 llvmCodeGen dflags h us cmms
@@ -52,7 +49,7 @@ llvmCodeGen dflags h us cmms
 
 
 -- -----------------------------------------------------------------------------
--- Do native code generation on all these cmms data sections.
+-- | Do native code generation on all these cmms data sections.
 --
 cmmDataLlvmGens
       :: DynFlags
@@ -102,7 +99,7 @@ cmmDataLlvmGens' dflags h env (cmm:cmms) lmdata
 
 
 -- -----------------------------------------------------------------------------
--- Do native code generation on all these cmms procs.
+-- | Do native code generation on all these cmms procs.
 --
 cmmProcLlvmGens
       :: DynFlags
@@ -125,15 +122,14 @@ cmmProcLlvmGens dflags h us env (cmm : cmms)
 
 
 -- | Complete llvm code generation phase for a single top-level chunk of Cmm.
---
 cmmLlvmGen
       :: DynFlags
       -> UniqSupply
       -> LlvmEnv
-      -> RawCmmTop                                    -- ^ the cmm to generate code for
+      -> RawCmmTop             -- ^ the cmm to generate code for
       -> IO ( UniqSupply,
               LlvmEnv,
-              [LlvmCmmTop] )                          -- native code
+              [LlvmCmmTop] )   -- native code
 
 cmmLlvmGen dflags us env cmm
   = do
@@ -156,9 +152,8 @@ cmmLlvmGen dflags us env cmm
 
 
 -- -----------------------------------------------------------------------------
--- Instruction selection
+-- | Instruction selection
 --
-
 genLlvmCode
     :: DynFlags
     -> LlvmEnv
@@ -175,16 +170,13 @@ genLlvmCode _ env cp@(CmmProc _ _ _ _)
     = genLlvmProc env cp
 
 -- -----------------------------------------------------------------------------
--- Fixup assignments to global registers so that they assign to
+-- | Fixup assignments to global registers so that they assign to
 -- locations within the RegTable, if appropriate.
-
+--
 -- Note that we currently don't fixup reads here: they're done by
 -- the generic optimiser below, to avoid having two separate passes
 -- over the Cmm.
 --
--- The LLVM back-end doesn't support pinned registers as of yet.
---
-
 fixAssignsTop :: RawCmmTop -> UniqSM RawCmmTop
 
 fixAssignsTop top@(CmmData _ _) = returnUs top
@@ -220,20 +212,16 @@ fixAssign other_stmt = returnUs [other_stmt]
 
 
 -- -----------------------------------------------------------------------------
--- Generic Cmm optimiser
+-- | Generic Cmm optimiser
 --
-
-{-
-Here we do:
-
-  (a) Constant folding
-  (b) Simple inlining: a temporary which is assigned to and then
-      used, once, can be shorted.
-  (c) Replacement of references to GlobalRegs which do not have
-      machine registers by the appropriate memory load (eg.
-      Hp ==>  *(BaseReg + 34) ).
--}
-
+-- Here we do:
+--   (a) Constant folding
+--   (b) Simple inlining: a temporary which is assigned to and then
+--       used, once, can be shorted.
+--   (c) Replacement of references to GlobalRegs which do not have
+--       machine registers by the appropriate memory load (eg.
+--       Hp ==>  *(BaseReg + 34) ).
+-- 
 cmmToCmm :: RawCmmTop -> RawCmmTop
 cmmToCmm top@(CmmData _ _) = top
 cmmToCmm (CmmProc info lbl params (ListGraph blocks)) =
@@ -241,6 +229,9 @@ cmmToCmm (CmmProc info lbl params (ListGraph blocks)) =
         blocks'' = map cmmAddReturn blocks'
     in CmmProc info lbl params (ListGraph $ blocks'')
 
+-- | This checks that a Cmm block ends with a control flow statement as the LLVM
+-- code gen requires this property to generate correct code. If no control flow
+-- statement is present, then a 'return void' is added.
 cmmAddReturn :: CmmBasicBlock -> CmmBasicBlock
 cmmAddReturn blk@(BasicBlock id stmts) =
     let front = take (length stmts - 1) stmts
@@ -372,7 +363,4 @@ cmmExprConFold expr
 
         other
             -> other
-
-
-\end{code}
 

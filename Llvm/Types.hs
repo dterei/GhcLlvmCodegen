@@ -1,163 +1,75 @@
 --------------------------------------------------------------------------------
--- The LLVM Type System.
+-- | The LLVM Type System.
 --
 
 module Llvm.Types where
 
--- GHC specific
 #include "HsVersions.h"
 #include "ghcconfig.h"
 
--- GHC specific
-import Constants
-
--- general libraries
 import Control.Monad.ST
 import Data.Array.ST
 import Data.Char
 import Data.Word
 import Numeric
 
+-- -----------------------------------------------------------------------------
+-- * LLVM Basic Types and Variables
+--
 
--- | Llvm compare functions, parameter of the 'Expression_Compare' constructor
---   of type 'Expression'
-data LlvmCmpOp
-  -- | Signed and Unsigned equality
-  = LM_CMP_Eq  -- Equality
-  | LM_CMP_Ne  -- Non equality
-
-  -- | Unsigned comparisons.
-  | LM_CMP_Ugt -- greater then
-  | LM_CMP_Uge -- greater then or equal
-  | LM_CMP_Ult -- less then
-  | LM_CMP_Ule -- less then or equal
-
-  -- | Signed comparisons.
-  | LM_CMP_Sgt
-  | LM_CMP_Sge
-  | LM_CMP_Slt
-  | LM_CMP_Sle
-
-  -- | Float comparisons. GHC uses a mix of ordere and unordered float
-  -- comparisons.
-  | LM_CMP_Feq
-  | LM_CMP_Fne
-  | LM_CMP_Fgt
-  | LM_CMP_Fge
-  | LM_CMP_Flt
-  | LM_CMP_Fle
-  deriving (Eq)
-
-instance Show LlvmCmpOp where
-  show LM_CMP_Eq  = "eq"
-  show LM_CMP_Ne  = "ne"
-  show LM_CMP_Ugt = "ugt"
-  show LM_CMP_Uge = "uge"
-  show LM_CMP_Ult = "ult"
-  show LM_CMP_Ule = "ule"
-  show LM_CMP_Sgt = "sgt"
-  show LM_CMP_Sge = "sge"
-  show LM_CMP_Slt = "slt"
-  show LM_CMP_Sle = "sle"
-  show LM_CMP_Feq = "oeq"
-  show LM_CMP_Fne = "une"
-  show LM_CMP_Fgt = "ogt"
-  show LM_CMP_Fge = "oge"
-  show LM_CMP_Flt = "olt"
-  show LM_CMP_Fle = "ole"
-
-
--- | Llvm binary operators, parameter of the 'Expression_MachOp' constructor of type
---   'Expression'
-data LlvmMachOp
-  -- Following take two integer, floating point or vector values.
-  = LM_MO_Add
-  | LM_MO_Sub
-  | LM_MO_Mul
-  | LM_MO_UDiv -- unsigned integer or vector division.
-  | LM_MO_SDiv -- signed integer ..
-  | LM_MO_FDiv -- floating point ..
-  | LM_MO_URem -- unsigned integer or vector remainder (mod)
-  | LM_MO_SRem -- signed ...
-  | LM_MO_FRem -- floating point ...
-  -- Left shift
-  | LM_MO_Shl
-  -- Logical shift right
-  -- Shift right, filling with zero
-  | LM_MO_LShr
-  -- Arithmetic shift right
-  -- The most significant bits of the result will be equal to the sign bit of
-  -- the left operand.
-  | LM_MO_AShr
-  -- Bitwise logical operations.
-  | LM_MO_And
-  | LM_MO_Or
-  | LM_MO_Xor
-  deriving (Eq)
-
-instance Show LlvmMachOp where
-  show LM_MO_Add  = "add"
-  show LM_MO_Sub  = "sub"
-  show LM_MO_Mul  = "mul"
-  show LM_MO_UDiv = "udiv"
-  show LM_MO_SDiv = "sdiv"
-  show LM_MO_FDiv = "fdiv"
-  show LM_MO_URem = "urem"
-  show LM_MO_SRem = "srem"
-  show LM_MO_FRem = "frem"
-  show LM_MO_Shl  = "shl"
-  show LM_MO_LShr = "lshr"
-  show LM_MO_AShr = "ashr"
-  show LM_MO_And  = "and"
-  show LM_MO_Or   = "or"
-  show LM_MO_Xor  = "xor"
-
-
--- | The various LLVM cast operations.
---   Converts between the various LLVM types.
-data LlvmCastOp
-  = LM_Trunc
-  | LM_Zext
-  | LM_Sext
-  | LM_Fptrunc
-  | LM_Fpext
-  | LM_Fptoui
-  | LM_Fptosi
-  | LM_Uitofp
-  | LM_Sitofp
-  | LM_Ptrtoint
-  | LM_Inttoptr
-  | LM_Bitcast
-  deriving (Eq)
-
-instance Show LlvmCastOp where
-  show LM_Trunc    = "trunc"
-  show LM_Zext     = "zext"
-  show LM_Sext     = "sext"
-  show LM_Fptrunc  = "fptrunc"
-  show LM_Fpext    = "fpext"
-  show LM_Fptoui   = "fptoui"
-  show LM_Fptosi   = "fptosi"
-  show LM_Uitofp   = "uitofp"
-  show LM_Sitofp   = "sitofp"
-  show LM_Ptrtoint = "ptrtoint"
-  show LM_Inttoptr = "inttoptr"
-  show LM_Bitcast  = "bitcast"
-
-
--- | Some nice types
+-- | A global mutable variable. Maybe defined or external
 type LMGlobal   = (LlvmVar, Maybe LlvmStatic)
+-- | A global constant variable
 type LMConstant = (LlvmVar, LlvmStatic)
+-- | A String in LLVM
 type LMString   = String
 
 
--- | Llvm variables
+-- | Llvm Types.
+data LlvmType
+  = LMInt Int                 -- ^ An integer with a given width in bits.
+  | LMFloat                   -- ^ 32 bit floating point
+  | LMDouble                  -- ^ 64 bit floating point
+  | LMFloat80                 -- ^ 80 bit (x86 only) floating point
+  | LMFloat128                -- ^ 128 bit floating point
+  | LMPointer LlvmType        -- ^ A pointer to a 'LlvmType'
+  | LMArray Int LlvmType      -- ^ An array of 'LlvmType'
+  | LMLabel                   -- ^ A 'LlvmVar' can represent a label (address)
+  | LMVoid                    -- ^ Void type
+  | LMStruct [LlvmType]       -- ^ Structure type
+  | LMAlias LMString LlvmType -- ^ A type alias
+
+  -- | Function type, used to create pointers to functions
+  | LMFunction LlvmFunctionDecl
+  deriving (Eq)
+
+instance Show LlvmType where
+  show (LMInt size    ) = "i" ++ show size
+  show (LMFloat       ) = "float"
+  show (LMDouble      ) = "double"
+  show (LMFloat80     ) = "x86_fp80"
+  show (LMFloat128    ) = "fp128"
+  show (LMPointer x   ) = show x ++ "*"
+  show (LMArray nr tp ) = "[" ++ show nr ++ " x " ++ show tp ++ "]"
+  show (LMLabel       ) = "label"
+  show (LMVoid        ) = "void"
+  show (LMStruct tys  ) = "{" ++ (commaCat tys) ++ "}"
+
+  show (LMFunction (LlvmFunctionDecl _ _ _ r VarArgs p))
+        = (show r) ++ " (" ++ (either commaCat commaCat p) ++ ", ...)"
+  show (LMFunction (LlvmFunctionDecl _ _ _ r FixedArgs p))
+        = (show r) ++ " (" ++ (either commaCat commaCat p) ++ ")"
+
+  show (LMAlias s _   ) = "%" ++ s
+
+
+-- | Llvm Variables
 data LlvmVar
-  -- references to variables with a global scope.
+  -- | Variables with a global scope.
   = LMGlobalVar LMString LlvmType LlvmLinkageType
-  -- references to variables local for a function or parameters.
+  -- | Variables local to a function or parameters.
   | LMLocalVar  LMString LlvmType
-  -- a constant variable
+  -- | A constant variable
   | LMLitVar  LlvmLit
   deriving (Eq)
 
@@ -166,11 +78,13 @@ instance Show LlvmVar where
   show (x         ) = show (getVarType x) ++ " " ++ getName x
 
 
--- | Llvm literal data
+-- | Llvm Literal Data.
+--
+-- These can be used inline in expressions.
 data LlvmLit
-  -- refers to an integer constant as (i64 42).
+  -- | Refers to an integer constant (i64 42).
   = LMIntLit Integer LlvmType
-  -- floating point literal
+  -- | Floating point literal
   | LMFloatLit Rational LlvmType
   deriving (Eq)
 
@@ -178,33 +92,24 @@ instance Show LlvmLit where
   show l = show (getLitType l) ++ " " ++ getLit l
 
 
--- | Llvm Static data
---   This can be declared in constants
+-- | Llvm Static Data.
+--
+-- These represent the possible global level variables and constants.
 data LlvmStatic
-  -- | A comment in a static section
-  = LMComment LMString
-  -- | A static variant of a literal value
-  | LMStaticLit LlvmLit
-  -- | For uninitialised data
-  | LMUninitType LlvmType
-  -- | Defines a static LMString
-  | LMStaticStr LMString LlvmType
-  -- | A static array
-  | LMStaticArray [LlvmStatic] LlvmType
-  -- | A static structure type
-  | LMStaticStruc [LlvmStatic] LlvmType
-  -- | A pointer to other data
-  | LMStaticPointer LlvmVar
+  = LMComment LMString                  -- ^ A comment in a static section
+  | LMStaticLit LlvmLit                 -- ^ A static variant of a literal value
+  | LMUninitType LlvmType               -- ^ For uninitialised data
+  | LMStaticStr LMString LlvmType       -- ^ Defines a static 'LMString'
+  | LMStaticArray [LlvmStatic] LlvmType -- ^ A static array
+  | LMStaticStruc [LlvmStatic] LlvmType -- ^ A static structure type
+  | LMStaticPointer LlvmVar             -- ^ A pointer to other data
 
   -- static expressions, could split out but leave
   -- for moment for ease of use. Not many of them.
 
-  -- pointer to int
-  | LMPtoI LlvmStatic LlvmType
-  -- constant add
-  | LMAdd LlvmStatic LlvmStatic
-  -- constant sub
-  | LMSub LlvmStatic LlvmStatic
+  | LMPtoI LlvmStatic LlvmType         -- ^ Pointer to Integer conversion
+  | LMAdd LlvmStatic LlvmStatic        -- ^ Constant addition operation
+  | LMSub LlvmStatic LlvmStatic        -- ^ Constant subtraction operation
   deriving (Eq)
 
 instance Show LlvmStatic where
@@ -250,70 +155,24 @@ instance Show LlvmStatic where
                         ++ show s1 ++ ", s2: " ++ show s2
 
 
--- | Llvm types.
-data LlvmType
-  -- An integer with a given width in bits.
-  = LMInt Int
-  -- floating point types
-  | LMFloat -- 32 bit
-  | LMDouble -- 64 bit
-  | LMFloat80 -- 80 bit (x86 only)
-  | LMFloat128 -- 128 bit
-  -- A pointer to a 'LlvmType'
-  | LMPointer LlvmType
-  -- An array of 'LlvmType'
-  | LMArray Int LlvmType
-  -- A 'LlvmVar' can represent a label (address)
-  | LMLabel
-  -- Void
-  | LMVoid
-  -- Struct
-  | LMStruct [LlvmType]
-  -- function type, used to create pointers to functions
-  | LMFunction LlvmFunctionDecl
-  -- a type alias
-  | LMAlias LMString LlvmType
-  deriving (Eq)
-
-instance Show LlvmType where
-  show (LMInt size    ) = "i" ++ show size
-  show (LMFloat       ) = "float"
-  show (LMDouble      ) = "double"
-  show (LMFloat80     ) = "x86_fp80"
-  show (LMFloat128    ) = "fp128"
-  show (LMPointer x   ) = show x ++ "*"
-  show (LMArray nr tp ) = "[" ++ show nr ++ " x " ++ show tp ++ "]"
-  show (LMLabel       ) = "label"
-  show (LMVoid        ) = "void"
-  show (LMStruct tys  ) = "{" ++ (commaCat tys) ++ "}"
-
-  show (LMFunction (LlvmFunctionDecl _ _ _ r VarArgs p))
-        = (show r) ++ " (" ++ (either commaCat commaCat p) ++ ", ...)"
-  show (LMFunction (LlvmFunctionDecl _ _ _ r FixedArgs p))
-        = (show r) ++ " (" ++ (either commaCat commaCat p) ++ ")"
-
-  show (LMAlias s _   ) = "%" ++ s
-
+-- | Concatenate an array together, separated by commas
 commaCat :: Show a => [a] -> String
 commaCat [] = ""
 commaCat x  = show (head x) ++ (concat $ map (\y -> "," ++ show y) (tail x))
 
-
--- | Test if a 'LlvmVar' is global.
-isGlobal :: LlvmVar -> Bool
-isGlobal (LMGlobalVar _ _ _) = True
-isGlobal _                   = False
-
+-- -----------------------------------------------------------------------------
+-- ** Operations on LLVM Basic Types and Variables
+--
 
 -- | Return the variable name or value of the 'LlvmVar'
---   in Llvm IR textual representation (e.g. @\@x@, @%y@ or @42@).
+-- in Llvm IR textual representation (e.g. @\@x@, @%y@ or @42@).
 getName :: LlvmVar -> String
 getName (LMGlobalVar x _ _ ) = "@" ++ x
 getName (LMLocalVar  x _)    = "%" ++ x
 getName (LMLitVar x)         = getLit x
 
 -- | Return the variable name or value of the 'LlvmVar'
---   in a plain textual representation (e.g. @x@, @y@ or @42@).
+-- in a plain textual representation (e.g. @x@, @y@ or @42@).
 getPlainName :: LlvmVar -> String
 getPlainName (LMGlobalVar x _ _) = x
 getPlainName (LMLocalVar  x _)   = x
@@ -327,7 +186,6 @@ getLit (LMIntLit i _)   = show ((fromInteger i)::Int)
 getLit (LMFloatLit r LMFloat)  = fToStr $ fromRational r
 getLit (LMFloatLit r LMDouble) = dToStr $ fromRational r
 getLit l = error $ "getLit: Usupported LlvmLit type! " ++ show (getLitType l)
-
 
 -- | Return the 'LlvmType' of the 'LlvmVar'
 getVarType :: LlvmVar -> LlvmType
@@ -357,61 +215,40 @@ getStatType (LMComment       _) = error "Can't call getStatType on LMComment!"
 getGlobalType :: LMGlobal -> LlvmType
 getGlobalType (v, _) = getVarType v
 
-
 -- | Return the 'LlvmVar' part of a 'LMGlobal'
 getGlobalVar :: LMGlobal -> LlvmVar
 getGlobalVar (v, _) = v
-
 
 -- | Return the 'LlvmLinkageType' for a 'LlvmVar'
 getLink :: LlvmVar -> LlvmLinkageType
 getLink (LMGlobalVar _ _ l) = l
 getLink _                   = ExternallyVisible
 
-
--- | Shortcut for common bit types
-i128, i64, i32, i16, i8, i1 :: LlvmType
-i128 = LMInt 128
-i64  = LMInt  64
-i32  = LMInt  32
-i16  = LMInt  16
-i8   = LMInt   8
-i1   = LMInt   1
-
--- | The target architectures word size
-llvmWord :: LlvmType
-llvmWord = LMInt (wORD_SIZE * 8)
-
-llvmWordPtr :: LlvmType
-llvmWordPtr = pLift llvmWord
-
-
--- | Add a pointer indirection to the supplied type. 'Label' and 'Void'
---  cannot be lifted.
+-- | Add a pointer indirection to the supplied type. 'LMLabel' and 'LMVoid'
+-- cannot be lifted.
 pLift :: LlvmType -> LlvmType
 pLift (LMLabel) = error "Labels are unliftable"
 pLift (LMVoid)  = error "Voids are unliftable"
 pLift x         = LMPointer x
 
--- | Remove the pointer indirection of the supplied type. Only 'Pointer'
---  constructors can be lowered.
+-- | Remove the pointer indirection of the supplied type. Only 'LMPointer'
+-- constructors can be lowered.
 pLower :: LlvmType -> LlvmType
 pLower (LMPointer x) = x
 pLower x  = error $ show x ++ " is a unlowerable type, need a pointer"
 
--- | Lower a variable of LMPointer type.
+-- | Lower a variable of 'LMPointer' type.
 pVarLower :: LlvmVar -> LlvmVar
 pVarLower (LMGlobalVar s t l) = LMGlobalVar s (pLower t) l
 pVarLower (LMLocalVar s t   ) = LMLocalVar s (pLower t)
 pVarLower (LMLitVar _)        = error $ "Can't lower a literal type!"
-
 
 -- | Test if the given 'LlvmType' is an integer
 isInt :: LlvmType -> Bool
 isInt (LMInt _) = True
 isInt _         = False
 
--- | Test if the given LlvmType is a floating point type
+-- | Test if the given 'LlvmType' is a floating point type
 isFloat :: LlvmType -> Bool
 isFloat LMFloat    = True
 isFloat LMDouble   = True
@@ -419,13 +256,17 @@ isFloat LMFloat80  = True
 isFloat LMFloat128 = True
 isFloat _          = False
 
--- | Test if the given 'LlvmType' is a 'Pointer'
+-- | Test if the given 'LlvmType' is an 'LMPointer' construct
 isPointer :: LlvmType -> Bool
 isPointer (LMPointer _) = True
 isPointer _             = False
 
+-- | Test if a 'LlvmVar' is global.
+isGlobal :: LlvmVar -> Bool
+isGlobal (LMGlobalVar _ _ _) = True
+isGlobal _                   = False
 
--- | Width in bits of an LlvmType, returns 0 if not applicable
+-- | Width in bits of an 'LlvmType', returns 0 if not applicable
 llvmWidthInBits :: LlvmType -> Int
 llvmWidthInBits (LMInt n)        = n
 llvmWidthInBits (LMFloat)        = 32
@@ -444,23 +285,44 @@ llvmWidthInBits (LMAlias _ t)    = llvmWidthInBits t
 
 
 -- -----------------------------------------------------------------------------
--- Functions
+-- ** Shortcut for Common Types
 --
 
--- | A function declaration has the following elements
---    * name:       Unique identifier of the function.
---    * internal:   LinkageType of the function.
---    * funCc:      The calling convention of the function.
---    * returnType: Type of the returned value
---    * varargs:    ParameterListType indicating if this function uses varargs
---    * params:     Signature of the parameters, can be just types or full vars
---                  if paramater names are requried.
+i128, i64, i32, i16, i8, i1 :: LlvmType
+i128 = LMInt 128
+i64  = LMInt  64
+i32  = LMInt  32
+i16  = LMInt  16
+i8   = LMInt   8
+i1   = LMInt   1
+
+-- | The target architectures word size
+llvmWord :: LlvmType
+llvmWord = LMInt 32
+
+-- | The target architectures pointer size
+llvmWordPtr :: LlvmType
+llvmWordPtr = pLift llvmWord
+
+
+-- -----------------------------------------------------------------------------
+-- * LLVM Function Types
+--
+
+-- | An LLVM Function
 data LlvmFunctionDecl = LlvmFunctionDecl {
+        -- | Unique identifier of the function.
         decName       :: LMString,
+        -- | LinkageType of the function.
         funcLinkage   :: LlvmLinkageType,
+        -- | The calling convention of the function.
         funcCc        :: LlvmCallConvention,
+        -- | Type of the returned value
         decReturnType :: LlvmType,
+        -- | Indicates if this function uses varargs
         decVarargs    :: LlvmParameterListType,
+        -- | Signature of the parameters, can be just types or full vars
+        -- if parameter names are required.
         decParams     :: Either [LlvmType] [LlvmVar]
   }
 
@@ -480,42 +342,136 @@ instance Eq LlvmFunctionDecl where
 type LlvmFunctionDecls = [LlvmFunctionDecl]
 
 
+-- | Llvm Function Attributes.
+--
+-- Function attributes are set to communicate additional information about a
+-- function. Function attributes are considered to be part of the function,
+-- not of the function type, so functions with different parameter attributes
+-- can have the same function type. Functions can have multiple attributes.
+--
+-- Descriptions taken from <http://llvm.org/docs/LangRef.html#fnattrs>
+data LlvmFuncAttr
+  -- | This attribute indicates that the inliner should attempt to inline this
+  -- function into callers whenever possible, ignoring any active inlining
+  -- size threshold for this caller.
+  = AlwaysInline
+  -- | This attribute indicates that the source code contained a hint that
+  -- inlining this function is desirable (such as the \"inline\" keyword in
+  -- C/C++). It is just a hint; it imposes no requirements on the inliner.
+  | InlineHint
+  -- | This attribute indicates that the inliner should never inline this
+  -- function in any situation. This attribute may not be used together
+  -- with the alwaysinline attribute.
+  | NoInline
+  -- | This attribute suggests that optimization passes and code generator
+  -- passes make choices that keep the code size of this function low, and
+  -- otherwise do optimizations specifically to reduce code size.
+  | OptSize
+  -- | This function attribute indicates that the function never returns
+  -- normally. This produces undefined behavior at runtime if the function
+  -- ever does dynamically return.
+  | NoReturn
+  -- | This function attribute indicates that the function never returns with
+  -- an unwind or exceptional control flow. If the function does unwind, its
+  -- runtime behavior is undefined.
+  | NoUnwind
+  -- | This attribute indicates that the function computes its result (or
+  -- decides to unwind an exception) based strictly on its arguments, without
+  -- dereferencing any pointer arguments or otherwise accessing any mutable
+  -- state (e.g. memory, control registers, etc) visible to caller functions.
+  -- It does not write through any pointer arguments (including byval
+  -- arguments) and never changes any state visible to callers. This means
+  -- that it cannot unwind exceptions by calling the C++ exception throwing
+  -- methods, but could use the unwind instruction.
+  | ReadNone
+  -- | This attribute indicates that the function does not write through any
+  -- pointer arguments (including byval arguments) or otherwise modify any
+  -- state (e.g. memory, control registers, etc) visible to caller functions.
+  -- It may dereference pointer arguments and read state that may be set in
+  -- the caller. A readonly function always returns the same value (or unwinds
+  -- an exception identically) when called with the same set of arguments and
+  -- global state. It cannot unwind an exception by calling the C++ exception
+  -- throwing methods, but may use the unwind instruction.
+  | ReadOnly
+  -- | This attribute indicates that the function should emit a stack smashing
+  -- protector. It is in the form of a \"canary\"—a random value placed on the
+  -- stack before the local variables that's checked upon return from the
+  -- function to see if it has been overwritten. A heuristic is used to
+  -- determine if a function needs stack protectors or not.
+  --
+  -- If a function that has an ssp attribute is inlined into a function that
+  -- doesn't have an ssp attribute, then the resulting function will have an
+  -- ssp attribute.
+  | Ssp
+  -- | This attribute indicates that the function should always emit a stack
+  -- smashing protector. This overrides the ssp function attribute.
+  --
+  -- If a function that has an sspreq attribute is inlined into a function
+  -- that doesn't have an sspreq attribute or which has an ssp attribute,
+  -- then the resulting function will have an sspreq attribute.
+  | SspReq
+  -- | This attribute indicates that the code generator should not use a red
+  -- zone, even if the target-specific ABI normally permits it.
+  | NoRedZone
+  -- | This attributes disables implicit floating point instructions.
+  | NoImplicitFloat
+  -- | This attribute disables prologue / epilogue emission for the function.
+  -- This can have very system-specific consequences.
+  | Naked
+  deriving (Eq)
+
+instance Show LlvmFuncAttr where
+  show AlwaysInline    = "alwaysinline"
+  show InlineHint      = "inlinehint"
+  show NoInline        = "noinline"
+  show OptSize         = "optsize"
+  show NoReturn        = "noreturn"
+  show NoUnwind        = "nounwind"
+  show ReadNone        = "readnon"
+  show ReadOnly        = "readonly"
+  show Ssp             = "ssp"
+  show SspReq          = "ssqreq"
+  show NoRedZone       = "noredzone"
+  show NoImplicitFloat = "noimplicitfloat"
+  show Naked           = "naked"
+
+
 -- | Different types to call a function.
 data LlvmCallType
-  -- Normal call, allocate a new stack frame.
+  -- | Normal call, allocate a new stack frame.
   = StdCall
-  -- Tail call, perform the call in the current stack frame.
+  -- | Tail call, perform the call in the current stack frame.
   | TailCall
   deriving (Eq,Show)
 
 -- | Different calling conventions a function can use.
 data LlvmCallConvention
-  -- | The C calling convention
-  --   This calling convention (the default if no other calling convention is
-  --   specified) matches the target C calling conventions. This calling
-  --   convention supports varargs function calls and tolerates some mismatch in
-  --   the declared prototype and implemented declaration of the function (as
-  --   does normal C).
+  -- | The C calling convention.
+  -- This calling convention (the default if no other calling convention is
+  -- specified) matches the target C calling conventions. This calling
+  -- convention supports varargs function calls and tolerates some mismatch in
+  -- the declared prototype and implemented declaration of the function (as
+  -- does normal C).
   = CC_Ccc
   -- | This calling convention attempts to make calls as fast as possible
-  --   (e.g. by passing things in registers). This calling convention allows
-  --   the target to use whatever tricks it wants to produce fast code for the
-  --   target, without having to conform to an externally specified ABI
-  --   (Application Binary Interface). Implementations of this convention should
-  --   allow arbitrary tail call optimization to be supported. This calling
-  --   convention does not support varargs and requires the prototype of al
-  --   callees to exactly match the prototype of the function definition.
+  -- (e.g. by passing things in registers). This calling convention allows
+  -- the target to use whatever tricks it wants to produce fast code for the
+  -- target, without having to conform to an externally specified ABI
+  -- (Application Binary Interface). Implementations of this convention should
+  -- allow arbitrary tail call optimization to be supported. This calling
+  -- convention does not support varargs and requires the prototype of al
+  -- callees to exactly match the prototype of the function definition.
   | CC_Fastcc
   -- | This calling convention attempts to make code in the caller as efficient
-  --   as possible under the assumption that the call is not commonly executed.
-  --   As such, these calls often preserve all registers so that the call does
-  --   not break any live ranges in the caller side. This calling convention
-  --   does not support varargs and requires the prototype of all callees to
-  --   exactly match the prototype of the function definition.
+  -- as possible under the assumption that the call is not commonly executed.
+  -- As such, these calls often preserve all registers so that the call does
+  -- not break any live ranges in the caller side. This calling convention
+  -- does not support varargs and requires the prototype of all callees to
+  -- exactly match the prototype of the function definition.
   | CC_Coldcc
   -- | Any calling convention may be specified by number, allowing
-  --   target-specific calling conventions to be used. Target specific calling
-  --   conventions start at 64.
+  -- target-specific calling conventions to be used. Target specific calling
+  -- conventions start at 64.
   | CC_Ncc Int
   -- | X86 Specific 'StdCall' convention. LLVM includes a specific alias for it
   -- rather than just using CC_Ncc.
@@ -539,46 +495,47 @@ data LlvmParameterListType
   deriving (Eq,Show)
 
 
--- | Linkage type of a symbol. The description of the constructors is copied from
---  the Llvm Assembly Language Reference Manual
---  <http://www.llvm.org/docs/LangRef.html#linkage>, because they correspond to
---  the Llvm linkage types.
+-- | Linkage type of a symbol.
+--
+-- The description of the constructors is copied from the Llvm Assembly Language
+-- Reference Manual <http://www.llvm.org/docs/LangRef.html#linkage>, because
+-- they correspond to the Llvm linkage types.
 data LlvmLinkageType
   -- | Global values with internal linkage are only directly accessible by
-  --   objects in the current module. In particular, linking code into a module
-  --   with an internal global value may cause the internal to be renamed as
-  --   necessary to avoid collisions. Because the symbol is internal to the
-  --   module, all references can be updated. This corresponds to the notion
-  --   of the @static@ keyword in C.
+  -- objects in the current module. In particular, linking code into a module
+  -- with an internal global value may cause the internal to be renamed as
+  -- necessary to avoid collisions. Because the symbol is internal to the
+  -- module, all references can be updated. This corresponds to the notion
+  -- of the @static@ keyword in C.
   = Internal
   -- | Globals with @linkonce@ linkage are merged with other globals of the
-  --   same name when linkage occurs. This is typically used to implement
-  --   inline functions, templates, or other code which must be generated
-  --   in each translation unit that uses it. Unreferenced linkonce globals are
-  --   allowed to be discarded.
+  -- same name when linkage occurs. This is typically used to implement
+  -- inline functions, templates, or other code which must be generated
+  -- in each translation unit that uses it. Unreferenced linkonce globals are
+  -- allowed to be discarded.
   | LinkOnce
   -- | @weak@ linkage is exactly the same as linkonce linkage, except that
-  --   unreferenced weak globals may not be discarded. This is used for globals
-  --   that may be emitted in multiple translation units, but that are not
-  --   guaranteed to be emitted into every translation unit that uses them. One
-  --   example of this are common globals in C, such as @int X;@ at global
-  --   scope.
+  -- unreferenced weak globals may not be discarded. This is used for globals
+  -- that may be emitted in multiple translation units, but that are not
+  -- guaranteed to be emitted into every translation unit that uses them. One
+  -- example of this are common globals in C, such as @int X;@ at global
+  -- scope.
   | Weak
   -- | @appending@ linkage may only be applied to global variables of pointer
-  --   to array type. When two global variables with appending linkage are
-  --   linked together, the two global arrays are appended together. This is
-  --   the Llvm, typesafe, equivalent of having the system linker append
-  --   together @sections@ with identical names when .o files are linked.
+  -- to array type. When two global variables with appending linkage are
+  -- linked together, the two global arrays are appended together. This is
+  -- the Llvm, typesafe, equivalent of having the system linker append
+  -- together @sections@ with identical names when .o files are linked.
   | Appending
   -- | The semantics of this linkage follow the ELF model: the symbol is weak
-  --   until linked, if not linked, the symbol becomes null instead of being an
-  --   undefined reference.
+  -- until linked, if not linked, the symbol becomes null instead of being an
+  -- undefined reference.
   | ExternWeak
   -- | The symbol participates in linkage and can be used to resolve external
-  --   symbol references.
+  --  symbol references.
   | ExternallyVisible
   -- | Alias for 'ExternallyVisible' but with explicit textual form in LLVM
-  --   assembly.
+  --  assembly.
   | External
   deriving (Eq)
 
@@ -594,115 +551,138 @@ instance Show LlvmLinkageType where
   show ExternallyVisible = ""
   show External          = "external"
 
--- | Llvm Function Attributes
+
+-- -----------------------------------------------------------------------------
+-- * LLVM Operations
 --
---   Function attributes are set to communicate additional information about a
---   function. Function attributes are considered to be part of the function,
---   not of the function type, so functions with different parameter attributes
---   can have the same function type.
---
---   Functions can have multiple attributes.
---
---   Descriptions taken from <http://llvm.org/docs/LangRef.html#fnattrs>
-data LlvmFuncAttr
-  -- | This attribute indicates that the inliner should attempt to inline this
-  --   function into callers whenever possible, ignoring any active inlining
-  --   size threshold for this caller.
-  = AlwaysInline
-  -- | This attribute indicates that the source code contained a hint that
-  --   inlining this function is desirable (such as the "inline" keyword in
-  --   C/C++). It is just a hint; it imposes no requirements on the inliner.
-  | InlineHint
-  -- | This attribute indicates that the inliner should never inline this
-  --   function in any situation. This attribute may not be used together
-  --   with the alwaysinline attribute.
-  | NoInline
-  -- | This attribute suggests that optimization passes and code generator
-  --   passes make choices that keep the code size of this function low, and
-  --   otherwise do optimizations specifically to reduce code size.
-  | OptSize
-  -- | This function attribute indicates that the function never returns
-  --   normally. This produces undefined behavior at runtime if the function
-  --   ever does dynamically return.
-  | NoReturn
-  -- | This function attribute indicates that the function never returns with
-  --   an unwind or exceptional control flow. If the function does unwind, its
-  --   runtime behavior is undefined.
-  | NoUnwind
-  -- | This attribute indicates that the function computes its result (or
-  --   decides to unwind an exception) based strictly on its arguments, without
-  --   dereferencing any pointer arguments or otherwise accessing any mutable
-  --   state (e.g. memory, control registers, etc) visible to caller functions.
-  --   It does not write through any pointer arguments (including byval
-  --   arguments) and never changes any state visible to callers. This means
-  --   that it cannot unwind exceptions by calling the C++ exception throwing
-  --   methods, but could use the unwind instruction.
-  | ReadNone
-  -- | This attribute indicates that the function does not write through any
-  --   pointer arguments (including byval arguments) or otherwise modify any
-  --   state (e.g. memory, control registers, etc) visible to caller functions.
-  --   It may dereference pointer arguments and read state that may be set in
-  --   the caller. A readonly function always returns the same value (or unwinds
-  --   an exception identically) when called with the same set of arguments and
-  --   global state. It cannot unwind an exception by calling the C++ exception
-  --   throwing methods, but may use the unwind instruction.
-  | ReadOnly
-  -- | This attribute indicates that the function should emit a stack smashing
-  --   protector. It is in the form of a "canary"—a random value placed on the
-  --   stack before the local variables that's checked upon return from the
-  --   function to see if it has been overwritten. A heuristic is used to
-  --   determine if a function needs stack protectors or not.
-  --
-  --   If a function that has an ssp attribute is inlined into a function that
-  --   doesn't have an ssp attribute, then the resulting function will have an
-  --   ssp attribute.
-  | Ssp
-  -- | This attribute indicates that the function should always emit a stack
-  --   smashing protector. This overrides the ssp function attribute.
-  --
-  --   If a function that has an sspreq attribute is inlined into a function
-  --   that doesn't have an sspreq attribute or which has an ssp attribute,
-  --   then the resulting function will have an sspreq attribute.
-  | SspReq
-  -- | This attribute indicates that the code generator should not use a red
-  --   zone, even if the target-specific ABI normally permits it.
-  | NoRedZone
-  -- | This attributes disables implicit floating point instructions.
-  | NoImplicitFloat
-  -- | This attribute disables prologue / epilogue emission for the function.
-  --   This can have very system-specific consequences.
-  | Naked
+
+-- | Llvm binary operators machine operations.
+data LlvmMachOp
+  = LM_MO_Add  -- ^ add two integer, floating point or vector values.
+  | LM_MO_Sub  -- ^ subtract two ...
+  | LM_MO_Mul  -- ^ multiply ..
+  | LM_MO_UDiv -- ^ unsigned integer or vector division.
+  | LM_MO_SDiv -- ^ signed integer ..
+  | LM_MO_FDiv -- ^ floating point ..
+  | LM_MO_URem -- ^ unsigned integer or vector remainder (mod)
+  | LM_MO_SRem -- ^ signed ...
+  | LM_MO_FRem -- ^ floating point ...
+
+  -- | Left shift
+  | LM_MO_Shl
+  -- | Logical shift right
+  -- Shift right, filling with zero
+  | LM_MO_LShr
+  -- | Arithmetic shift right
+  -- The most significant bits of the result will be equal to the sign bit of
+  -- the left operand.
+  | LM_MO_AShr
+
+  | LM_MO_And -- ^ AND bitwise logical operation.
+  | LM_MO_Or  -- ^ OR bitwise logical operation.
+  | LM_MO_Xor -- ^ XOR bitwise logical operation.
   deriving (Eq)
 
-instance Show LlvmFuncAttr where
-  show AlwaysInline    = "alwaysinline"
-  show InlineHint      = "inlinehint"
-  show NoInline        = "noinline"
-  show OptSize         = "optsize"
-  show NoReturn        = "noreturn"
-  show NoUnwind        = "nounwind"
-  show ReadNone        = "readnon"
-  show ReadOnly        = "readonly"
-  show Ssp             = "ssp"
-  show SspReq          = "ssqreq"
-  show NoRedZone       = "noredzone"
-  show NoImplicitFloat = "noimplicitfloat"
-  show Naked           = "naked"
+instance Show LlvmMachOp where
+  show LM_MO_Add  = "add"
+  show LM_MO_Sub  = "sub"
+  show LM_MO_Mul  = "mul"
+  show LM_MO_UDiv = "udiv"
+  show LM_MO_SDiv = "sdiv"
+  show LM_MO_FDiv = "fdiv"
+  show LM_MO_URem = "urem"
+  show LM_MO_SRem = "srem"
+  show LM_MO_FRem = "frem"
+  show LM_MO_Shl  = "shl"
+  show LM_MO_LShr = "lshr"
+  show LM_MO_AShr = "ashr"
+  show LM_MO_And  = "and"
+  show LM_MO_Or   = "or"
+  show LM_MO_Xor  = "xor"
+
+
+-- | Llvm compare operations.
+data LlvmCmpOp
+  = LM_CMP_Eq  -- ^ Equal (Signed and Unsigned)
+  | LM_CMP_Ne  -- ^ Not equal (Signed and Unsigned)
+  | LM_CMP_Ugt -- ^ Unsigned greater than
+  | LM_CMP_Uge -- ^ Unsigned greater than or equal
+  | LM_CMP_Ult -- ^ Unsigned less than
+  | LM_CMP_Ule -- ^ Unsigned less than or equal
+  | LM_CMP_Sgt -- ^ Signed greater than
+  | LM_CMP_Sge -- ^ Signed greater than or equal
+  | LM_CMP_Slt -- ^ Signed less than
+  | LM_CMP_Sle -- ^ Signed less than or equal
+
+  -- Float comparisons. GHC uses a mix of ordered and unordered float
+  -- comparisons.
+  | LM_CMP_Feq -- ^ Float equal
+  | LM_CMP_Fne -- ^ Float not equal
+  | LM_CMP_Fgt -- ^ Float greater than
+  | LM_CMP_Fge -- ^ Float greater than or equal
+  | LM_CMP_Flt -- ^ Float less than
+  | LM_CMP_Fle -- ^ Float less than or equal
+  deriving (Eq)
+
+instance Show LlvmCmpOp where
+  show LM_CMP_Eq  = "eq"
+  show LM_CMP_Ne  = "ne"
+  show LM_CMP_Ugt = "ugt"
+  show LM_CMP_Uge = "uge"
+  show LM_CMP_Ult = "ult"
+  show LM_CMP_Ule = "ule"
+  show LM_CMP_Sgt = "sgt"
+  show LM_CMP_Sge = "sge"
+  show LM_CMP_Slt = "slt"
+  show LM_CMP_Sle = "sle"
+  show LM_CMP_Feq = "oeq"
+  show LM_CMP_Fne = "une"
+  show LM_CMP_Fgt = "ogt"
+  show LM_CMP_Fge = "oge"
+  show LM_CMP_Flt = "olt"
+  show LM_CMP_Fle = "ole"
+
+
+-- | Llvm cast operations.
+data LlvmCastOp
+  = LM_Trunc    -- ^ Integer truncate
+  | LM_Zext     -- ^ Integer extend (zero fill)
+  | LM_Sext     -- ^ Integer extend (sign fill)
+  | LM_Fptrunc  -- ^ Float truncate
+  | LM_Fpext    -- ^ Float extend
+  | LM_Fptoui   -- ^ Float to unsigned Integer
+  | LM_Fptosi   -- ^ Float to signed Integer
+  | LM_Uitofp   -- ^ Unsigned Integer to Float
+  | LM_Sitofp   -- ^ Signed Int to Float
+  | LM_Ptrtoint -- ^ Pointer to Integer
+  | LM_Inttoptr -- ^ Integer to Pointer
+  | LM_Bitcast  -- ^ Cast between types where no bit manipulation is needed
+  deriving (Eq)
+
+instance Show LlvmCastOp where
+  show LM_Trunc    = "trunc"
+  show LM_Zext     = "zext"
+  show LM_Sext     = "sext"
+  show LM_Fptrunc  = "fptrunc"
+  show LM_Fpext    = "fpext"
+  show LM_Fptoui   = "fptoui"
+  show LM_Fptosi   = "fptosi"
+  show LM_Uitofp   = "uitofp"
+  show LM_Sitofp   = "sitofp"
+  show LM_Ptrtoint = "ptrtoint"
+  show LM_Inttoptr = "inttoptr"
+  show LM_Bitcast  = "bitcast"
 
 
 -- -----------------------------------------------------------------------------
--- Converting floating-point literals to integrals for printing
+-- * Floating point conversion
 --
 
-convfd :: Float -> Double
-convfd = realToFrac::Float->Double
-
-convdf :: Double -> Float
-convdf = realToFrac::Double->Float
-
+-- | Convert a Haskell Float to an LLVM hex encoded floating point form
 fToStr :: Float -> String
-fToStr f = dToStr $ convfd f
+fToStr f = dToStr $ realToFrac f
 
+-- | Convert a Haskell Double to an LLVM hex encoded floating point form
 dToStr :: Double -> String
 dToStr d =
     let bs  = doubleToBytes d
@@ -716,13 +696,7 @@ dToStr d =
         str = map toUpper str'
     in  "0x" ++ str
 
-castDoubleToWord8Array :: STUArray s Int Double -> ST s (STUArray s Int Word8)
-castDoubleToWord8Array = castSTUArray
-
--- doubleToBytes convert to the host's byte order.
--- Providing that we're not cross-compiling for a target with the
--- opposite endianness, this should work ok on all targets.
-
+-- | Convert to the host's byte order.
 doubleToBytes :: Double -> [Int]
 doubleToBytes d
    = runST (do
@@ -739,21 +713,18 @@ doubleToBytes d
         i7 <- readArray arr 7
         return (map fromIntegral [i0,i1,i2,i3,i4,i5,i6,i7])
      )
-
+  where
+    castDoubleToWord8Array :: STUArray s Int Double
+	                        -> ST s (STUArray s Int Word8)
+    castDoubleToWord8Array = castSTUArray
 
 -- | Reverse or leave byte data alone to fix endianness on this
 -- target. LLVM generally wants things in Big-Endian form
 -- regardless of target architecture.
 fixEndian :: [a] -> [a]
-fixEndian = case isBigEndian of
-    True  -> id
-    False -> reverse
-
--- | Is the architecture we are running on big-endian?
-isBigEndian :: Bool
 #ifdef WORDS_BIGENDIAN
-isBigEndian = True
+fixEndian = id
 #else
-isBigEndian = False
+fixEndian = reverse
 #endif
 

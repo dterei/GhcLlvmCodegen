@@ -1,5 +1,5 @@
 -- ----------------------------------------------------------------------------
--- Base LLVM Code Generation module
+-- | Base LLVM Code Generation module
 --
 -- Contains functions useful through out the code generator.
 --
@@ -37,23 +37,28 @@ import Unique
 import qualified Data.Map as Map
 
 -- ----------------------------------------------------------------------------
--- Some data types
+-- * Some Data Types
 --
 
 type LlvmCmmTop = GenCmmTop LlvmData [CmmStatic] (ListGraph LlvmStatement)
 type LlvmBasicBlock = GenBasicBlock LlvmStatement
 
--- (data label, data type, unresovled data)
+-- | Unresolved code.
+-- Of the form: (data label, data type, unresovled data)
 type LlvmUnresData = (CLabel, LlvmType, [UnresStatic])
 
--- (data, type aliases)
+-- | Top level LLVM Data (globals and type aliases)
 type LlvmData = ([LMGlobal], [LlvmType])
 
+-- | An unresolved Label.
+-- 
+-- Labels are unresolved when we haven't yet determined if they are defined in
+-- the module we are currently compiling, or an external one.
 type UnresLabel = CmmLit
 type UnresStatic = Either UnresLabel LlvmStatic
 
 -- ----------------------------------------------------------------------------
--- Type translations
+-- * Type translations
 --
 
 -- | Translate a basic CmmType to an LlvmType.
@@ -105,58 +110,58 @@ llvmPtrBits = widthInBits $ typeWidth gcWord
 
 
 -- ----------------------------------------------------------------------------
--- Enviornment Handling
+-- * Environment Handling
 --
 
 type LlvmEnvMap = Map.Map LMString LlvmType
 -- two maps, one for functions and one for local vars.
 type LlvmEnv = (LlvmEnvMap, LlvmEnvMap)
 
--- | Get initial LlvmEnv.
+-- | Get initial Llvm environment.
 initLlvmEnv :: LlvmEnv
 initLlvmEnv = (Map.empty, Map.empty)
 
--- | clear vars
+-- | Clear variables from the environment.
 clearVars :: LlvmEnv -> LlvmEnv
 clearVars (e1, _) = (e1, Map.empty)
 
--- | insert functions
+-- | Insert functions into the environment.
 varInsert, funInsert :: LMString -> LlvmType -> LlvmEnv -> LlvmEnv
 varInsert s t (e1, e2) = (e1, Map.insert s t e2)
 funInsert s t (e1, e2) = (Map.insert s t e1, e2)
 
--- | lookup functions
+-- | Lookup functions in the environment.
 varLookup, funLookup :: LMString -> LlvmEnv -> Maybe LlvmType
 varLookup s (_, e2) = Map.lookup s e2
 funLookup s (e1, _) = Map.lookup s e1
 
 
 -- ----------------------------------------------------------------------------
--- Label handling
+-- * Label handling
 --
 
--- | Pretty Print a BlockId
+-- | Pretty Print a 'BlockId'.
 strBlockId_llvm :: BlockId -> LMString
 strBlockId_llvm b = (show . llvmSDoc . ppr . getUnique) b
 
--- | Pretty print a CLabel
+-- | Pretty print a 'CLabel'.
 strCLabel_llvm :: CLabel -> LMString
 strCLabel_llvm l = show $ llvmSDoc (pprCLabel l)
 
--- | Create an external defenition for a CLabel that is defined in another module.
+-- | Create an external definition for a 'CLabel' that is defined in another module.
 genCmmLabelRef :: CLabel -> LMGlobal
 genCmmLabelRef cl =
     let mcl = strCLabel_llvm cl
     in (LMGlobalVar mcl (LMPointer (LMArray 0 llvmWord)) External, Nothing)
 
--- | As above ('genCmmLabelRef') but taking a LMString, not CLabel.
+-- | As above ('genCmmLabelRef') but taking a 'LMString', not 'CLabel'.
 genStringLabelRef :: LMString -> LMGlobal
 genStringLabelRef cl =
     (LMGlobalVar cl (LMPointer (LMArray 0 llvmWord)) External, Nothing)
 
 
 -- ----------------------------------------------------------------------------
--- Misc
+-- * Misc
 --
 
 -- | Convert SDoc to Doc
@@ -164,7 +169,7 @@ llvmSDoc :: Outputable.SDoc -> Doc
 llvmSDoc d
 	= Outputable.withPprStyleDoc (Outputable.mkCodeStyle Outputable.CStyle) d
 
--- | error function
+-- | Error function
 panic :: String -> a
 panic s = Outputable.panic $ "LlvmCodeGen.Base." ++ s
 
