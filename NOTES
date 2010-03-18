@@ -110,9 +110,6 @@ Merge Questions
 Merge Problems
 ~~~~~~~~~~~~~~
 
-== ME ==
-Some of fp conversion code in Llvm/Types can be used from NCG isntead.
-
 == David Peixotto ==
 
  - Nice if -ddump-llvm implies -fllvm

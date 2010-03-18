@@ -12,6 +12,8 @@ import Data.Array.ST
 import Data.Char
 import Data.Word
 import Numeric
+-- from NCG
+import PprBase
 
 -- -----------------------------------------------------------------------------
 -- * LLVM Basic Types and Variables
@@ -695,28 +697,6 @@ dToStr d =
         str' = concat . fixEndian . (map hex) $ bs
         str = map toUpper str'
     in  "0x" ++ str
-
--- | Convert to the host's byte order.
-doubleToBytes :: Double -> [Int]
-doubleToBytes d
-   = runST (do
-        arr <- newArray_ ((0::Int),7)
-        writeArray arr 0 d
-        arr <- castDoubleToWord8Array arr
-        i0 <- readArray arr 0
-        i1 <- readArray arr 1
-        i2 <- readArray arr 2
-        i3 <- readArray arr 3
-        i4 <- readArray arr 4
-        i5 <- readArray arr 5
-        i6 <- readArray arr 6
-        i7 <- readArray arr 7
-        return (map fromIntegral [i0,i1,i2,i3,i4,i5,i6,i7])
-     )
-  where
-    castDoubleToWord8Array :: STUArray s Int Double
-	                        -> ST s (STUArray s Int Word8)
-    castDoubleToWord8Array = castSTUArray
 
 -- | Reverse or leave byte data alone to fix endianness on this
 -- target. LLVM generally wants things in Big-Endian form
