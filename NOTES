@@ -81,6 +81,10 @@ Todo
 Bugs
 ~~~~
 
+ - Now that we have own calling convention in LLVM, need to choose which calling
+ convention to use depending on if the back-end is being built in registered or
+ unregistered mode.
+
  - foreign calls on Mac OS X don't work. Seems to be because LLVM isn't
  generating correct code. All system calls must be 16 byte aligned in OS X
  and llvm isn't respecting this. Not sure if its a bug in LLVM or due to my
