@@ -18,7 +18,7 @@ import qualified PprCmm
 import BasicTypes
 import FastString
 import ForeignCall
-import Outputable ( ppr )
+import Outputable hiding ( panic, pprPanic )
 import qualified Outputable
 import UniqSupply
 import Unique
@@ -661,8 +661,8 @@ genMachOp env opt op [x, y] = case op of
                     return (env2, v1, stmts1 ++ stmts2 ++ [s1], top1 ++ top2)
 
                 else do
-                    -- XXX: Error. continue anyway so we can debug the generated
-						  -- ll file.
+                    -- XXX: Error. Continue anyway so we can debug the generated
+                    -- ll file.
                     let dx = Comment $ lines.show.llvmSDoc.PprCmm.pprExpr $ x
                     let dy = Comment $ lines.show.llvmSDoc.PprCmm.pprExpr $ y
                     (v1, s1) <- doExpr (ty vx) $ binOp vx vy
@@ -756,8 +756,13 @@ genCmmLoad env e ty = do
                     return (env', dvar, stmts ++ [cast, load], tops)
 
               | otherwise
-                -> panic $ "exprToVar: can't cast to pointer as int not of"
-                        ++ " pointer size!"
+                -> pprPanic
+                        ("exprToVar: can't cast to pointer as int not of "
+                            ++ "pointer size!")
+                        (PprCmm.pprExpr e <+> text (
+                            "Size of Ptr: " ++ show llvmPtrBits ++
+                            ", Size of var: " ++ show (llvmWidthInBits ety) ++
+                            ", Var: " ++ show iptr))
 
          False -> panic "exprToVar: CmmLoad expression is not of type int!"
 
@@ -942,7 +947,10 @@ mkIntLit :: Integral a => a -> LlvmType -> LlvmVar
 mkIntLit i ty = LMLitVar $ LMIntLit (toInteger i) ty
 
 
--- | Error function
+-- | Error functions
 panic :: String -> a
 panic s = Outputable.panic $ "LlvmCodeGen.CodeGen." ++ s
+
+pprPanic :: String -> SDoc -> a
+pprPanic s d = Outputable.pprPanic ("LlvmCodeGen.CodeGen." ++ s) d
 

@@ -12,6 +12,8 @@ import Data.Array.ST
 import Data.Char
 import Data.Word
 import Numeric
+
+import Constants
 -- from NCG
 import PprBase
 
@@ -300,7 +302,7 @@ i1   = LMInt   1
 
 -- | The target architectures word size
 llvmWord :: LlvmType
-llvmWord = LMInt 32
+llvmWord = LMInt (wORD_SIZE * 8)
 
 -- | The target architectures pointer size
 llvmWordPtr :: LlvmType
