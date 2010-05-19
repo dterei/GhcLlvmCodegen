@@ -136,14 +136,14 @@ stmtToInstrs env stmt = case stmt of
     CmmCondBranch arg id -> genCondBranch env arg id
     CmmSwitch arg ids    -> genSwitch env arg ids
 
-    -- | Foreign Call
+    -- Foreign Call
     CmmCall target res args _ ret
         -> genCall env target res args ret
 
-    -- | Tail call
+    -- Tail call
     CmmJump arg _ -> genJump env arg
 
-    -- | CPS, only tail calls, no return's
+    -- CPS, only tail calls, no return's
     CmmReturn _
         -> return (env, [Return $ LMLocalVar "void" LMVoid], [])
         -- -> panic "stmtToInstrs: return statement should have been cps'd away"
