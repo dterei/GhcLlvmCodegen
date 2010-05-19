@@ -100,6 +100,8 @@ Bugs
  an invalid bitcast. Could either look to redefine the function label when
  more information is encountered, or just fix up the bitcast.
 
+ - HRay on X86-64 segfaults on some scenes (e.g trans2)
+
 Merge Questions
 ~~~~~~~~~~~~~~~
 
