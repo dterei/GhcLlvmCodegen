@@ -41,8 +41,8 @@ genLlvmProc env (CmmProc info lbl params (ListGraph blocks))
   = do
         (env', lmblocks, lmdata) <- basicBlocksCodeGen env blocks ([], [])
 
-        let proc 	= CmmProc info lbl params (ListGraph lmblocks)
-        let tops 	= lmdata ++ [proc]
+        let proc    = CmmProc info lbl params (ListGraph lmblocks)
+        let tops    = lmdata ++ [proc]
 
         return (env', tops)
 
@@ -145,7 +145,7 @@ stmtToInstrs env stmt = case stmt of
 
 -- | Foreign Calls
 genCall :: LlvmEnv -> CmmCallTarget -> HintedCmmFormals -> HintedCmmActuals
-		  -> CmmReturnInfo -> UniqSM StmtData
+              -> CmmReturnInfo -> UniqSM StmtData
 
 -- Write barrier needs to be handled specially as it is implemented as an llvm
 -- intrinsic function.
@@ -234,7 +234,7 @@ genCall env target res args ret = do
         ret_reg t = panic $ "genCall: Bad number of registers! Can only handle"
                         ++ " 1, given " ++ show (length t) ++ "."
 
-	-- deal with call types
+    -- deal with call types
     let getFunPtr :: CmmCallTarget -> UniqSM ExprData
         getFunPtr targ = case targ of
             CmmCallee (CmmLit (CmmLabel lbl)) _ -> do
@@ -277,7 +277,7 @@ genCall env target res args ret = do
             CmmPrim mop -> do
                 let name = cmmPrimOpFunctions mop
                 let lbl  = mkForeignLabel name Nothing
-											ForeignLabelInExternalPackage IsFunction
+                                            ForeignLabelInExternalPackage IsFunction
                 getFunPtr $ CmmCallee (CmmLit (CmmLabel lbl)) CCallConv
 
     (env2, fptr, stmts2, top2) <- getFunPtr target
