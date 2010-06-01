@@ -179,27 +179,6 @@ Patch review follows:
 	XXX Why is this necessary?  These CPP flags are added by GHC itself
 	(StaticFlagParser.unregFlags).
 
-== PATCH REVIEW == TODO
-
-	+type LMString   = String
-
-	OPT You probably want to use something better than String, perhaps
-	FastString.
-
-	+-- | Llvm variables
-	+data LlvmVar
-	+  -- references to variables with a global scope.
-	+  = LMGlobalVar LMString LlvmType LlvmLinkageType
-	+  -- references to variables local for a function or parameters.
-	+  | LMLocalVar  LMString LlvmType
-	+  -- a constant variable
-	+  | LMLitVar  LlvmLit
-
-	OPT Rather than LMString in LMLocalVar, probably Unique would be
-	better.  I think you always generate these from a Unique (but I could
-	be wrong) in which case it would be better to do that conversion when
-	printing.  I'm not sure whether this applies to LMGlobalVar or not.
-
 	+  deriving (Eq)
 	+fixAssignsTop :: RawCmmTop -> UniqSM RawCmmTop
 	+
@@ -227,20 +206,6 @@ Patch review follows:
 	LLVM will do it all, however we do need to turn GlobalRegs into
 	BaseReg offsets where necessary, which is done by cmmToCmm.
 
-	+type LlvmEnvMap = Map.Map LMString LlvmType
-
-	OPT A Map of Strings is very inefficient compared with a UniqFM of
-	FastStrings.
-
-	+type StmtData = (LlvmEnv, [LlvmStatement], [LlvmCmmTop])
-
-	OPT Use OrdList rather than lists here, as you're doing a lot of
-	appending.  Append is O(1) in OrdList, O(n) with lists.
-
-	+type ExprData = (LlvmEnv, LlvmVar, LlvmStatements, [LlvmCmmTop])
-
-	OPT Again, LlvmStatements should probably be an OrdList.
-
 	addfile ./compiler/llvmGen/LlvmCodeGen/Regs.hs
 	hunk ./compiler/llvmGen/LlvmCodeGen/Regs.hs 1
 	+-- ----------------------------------------------------------------------------
@@ -264,15 +229,6 @@ Patch review follows:
 	Then you don't need to bake in the register mapping (a maintenance
 	headache), and a lot of this code can go away: the RealReg type and
 	everything using it.
-
-
-	addfile ./compiler/llvmGen/NOTES
-	hunk ./compiler/llvmGen/NOTES 1
-	+LLVM Back-end for GHC.
-	+
-	+Author: David Terei
-
-	CLEAN Useful-looking docs.  I suggest moving them into either (a) the wiki commentary or (b) the code as appropriate.
 
 	hunk ./compiler/main/CodeOutput.lhs 16
 	+#ifdef LLVM
@@ -304,4 +260,47 @@ Patch review follows:
 	+#else /* !LLVM */
 
 	CLEAN suggest removing the #ifdefs and enabling LLVM unconditionally, as above. 
+
+	+type StmtData = (LlvmEnv, [LlvmStatement], [LlvmCmmTop])
+
+	OPT Use OrdList rather than lists here, as you're doing a lot of
+	appending.  Append is O(1) in OrdList, O(n) with lists.
+
+	+type ExprData = (LlvmEnv, LlvmVar, LlvmStatements, [LlvmCmmTop])
+
+	OPT Again, LlvmStatements should probably be an OrdList.
+
+	addfile ./compiler/llvmGen/NOTES
+	hunk ./compiler/llvmGen/NOTES 1
+	+LLVM Back-end for GHC.
+	+
+	+Author: David Terei
+
+	CLEAN Useful-looking docs.  I suggest moving them into either (a) the wiki commentary or (b) the code as appropriate.
+
+== PATCH REVIEW == TODO
+
+	+type LMString   = String
+
+	OPT You probably want to use something better than String, perhaps
+	FastString.
+
+	+-- | Llvm variables
+	+data LlvmVar
+	+  -- references to variables with a global scope.
+	+  = LMGlobalVar LMString LlvmType LlvmLinkageType
+	+  -- references to variables local for a function or parameters.
+	+  | LMLocalVar  LMString LlvmType
+	+  -- a constant variable
+	+  | LMLitVar  LlvmLit
+
+	OPT Rather than LMString in LMLocalVar, probably Unique would be
+	better.  I think you always generate these from a Unique (but I could
+	be wrong) in which case it would be better to do that conversion when
+	printing.  I'm not sure whether this applies to LMGlobalVar or not.
+
+	+type LlvmEnvMap = Map.Map LMString LlvmType
+
+	OPT A Map of Strings is very inefficient compared with a UniqFM of
+	FastStrings.
 
