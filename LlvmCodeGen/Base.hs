@@ -98,7 +98,7 @@ llvmFunSig lbl link
 
 -- | A Function's arguments
 llvmFunArgs :: [LlvmVar]
-llvmFunArgs = map getRealRegArg realRegsOrdered
+llvmFunArgs = map lmGlobalRegArg activeStgRegs
 
 -- | Llvm standard fun attributes
 llvmStdFunAttrs :: [LlvmFuncAttr]

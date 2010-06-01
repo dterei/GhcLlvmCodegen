@@ -61,10 +61,10 @@ basicBlocksCodeGen env ([]) (blocks, tops)
        return (env, fblocks, tops)
   where
         stgRegs = allocs ++ stores
-        (allocs, stores) = mapAndUnzip getReg realRegsOrdered
+        (allocs, stores) = mapAndUnzip getReg activeStgRegs
         getReg rr =
-            let reg = getRealRegReg rr
-                arg = getRealRegArg rr
+            let reg = lmGlobalRegVar rr
+                arg = lmGlobalRegArg rr
                 alloc = Assignment reg $ Alloca (pLower $ getVarType reg) 1
                 store = Store arg reg
             in (alloc, store)
@@ -783,11 +783,7 @@ getCmmReg env r@(CmmLocal (LocalReg un _))
             Just ety -> (env, (LMLocalVar name $ pLift ety), [], [])
             Nothing  -> (nenv, newv, stmts, [])
 
-getCmmReg env (CmmGlobal g)
-  = case getGlobalRegAddr g of
-         (Left lmR) -> (env, getRealRegReg lmR, [], [])
-         (Right  _) -> panic $ "getCmmReg: Encountered unpinned global!"
-                            ++ " These should have been removed earlier"
+getCmmReg env (CmmGlobal g) = (env, lmGlobalRegVar g, [], [])
 
 
 -- | Allocate a CmmReg on the stack
@@ -867,7 +863,7 @@ genLit _ CmmHighStackMark
 loadStgRegs :: UniqSM ([LlvmVar], [LlvmStatement])
 loadStgRegs = do
     let loadExpr r = doExpr (pLower $ getVarType r) $ Load r
-    loads <- mapM (\x -> loadExpr $ getRealRegReg x) realRegsOrdered
+    loads <- mapM (\x -> loadExpr $ lmGlobalRegVar x) activeStgRegs
     return $ unzip loads
 
 

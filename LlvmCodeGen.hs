@@ -12,6 +12,7 @@ import LlvmCodeGen.Data
 import LlvmCodeGen.Ppr
 import LlvmCodeGen.Regs
 
+import qualified AsmCodeGen as Asm
 import Cmm
 import CmmOpt ( cmmMiniInline, cmmMachOpFold )
 import PprCmm
@@ -134,10 +135,11 @@ cmmLlvmGen
 cmmLlvmGen dflags us env cmm
   = do
     -- rewrite assignments to global regs
-    let (fixed_cmm, usFix) = initUs us $ fixAssignsTop cmm
+    let (fixed_cmm, usFix) = initUs us $ Asm.fixAssignsTop cmm
+    let fixed_cmm' = fixMissingRet fixed_cmm
 
     -- cmm to cmm optimisations
-    let opt_cmm = cmmToCmm fixed_cmm
+    let (opt_cmm, _) = Asm.cmmToCmm dflags fixed_cmm'
 
     dumpIfSet_dyn dflags Opt_D_dump_opt_cmm "Optimised Cmm"
         (pprCmm $ Cmm [opt_cmm])
@@ -169,198 +171,46 @@ genLlvmCode _ env (CmmProc _ _ _ (ListGraph []))
 genLlvmCode _ env cp@(CmmProc _ _ _ _)
     = genLlvmProc env cp
 
--- -----------------------------------------------------------------------------
--- | Fixup assignments to global registers so that they assign to
--- locations within the RegTable, if appropriate.
---
--- Note that we currently don't fixup reads here: they're done by
--- the generic optimiser below, to avoid having two separate passes
--- over the Cmm.
---
-fixAssignsTop :: RawCmmTop -> UniqSM RawCmmTop
-
-fixAssignsTop top@(CmmData _ _) = returnUs top
-
-fixAssignsTop (CmmProc info lbl params (ListGraph blocks)) =
-    mapUs fixAssignsBlock blocks `thenUs` \ blocks' ->
-    returnUs (CmmProc info lbl params (ListGraph blocks'))
-
-fixAssignsBlock :: CmmBasicBlock -> UniqSM CmmBasicBlock
-fixAssignsBlock (BasicBlock id stmts) =
-    fixAssigns stmts `thenUs` \ stmts' ->
-    returnUs (BasicBlock id stmts')
-
-fixAssigns :: [CmmStmt] -> UniqSM [CmmStmt]
-fixAssigns stmts =
-    mapUs fixAssign stmts `thenUs` \ stmtss ->
-    returnUs (concat stmtss)
-
-fixAssign :: CmmStmt -> UniqSM [CmmStmt]
-fixAssign e@(CmmAssign (CmmGlobal reg) src)
-  | Left _realreg <- reg_or_addr
-  = returnUs [e]
-  | Right baseRegAddr <- reg_or_addr
-  = returnUs [CmmStore baseRegAddr src]
-          -- Replace register leaves with appropriate StixTrees for
-          -- the given target. GlobalRegs which map to a reg on this
-          -- arch are left unchanged.  Assigning to BaseReg is always
-          -- illegal, so we check for that.
-  where
-      reg_or_addr = getGlobalRegAddr reg
-
-fixAssign other_stmt = returnUs [other_stmt]
-
 
 -- -----------------------------------------------------------------------------
--- | Generic Cmm optimiser
---
--- Here we do:
---   (a) Constant folding
---   (b) Simple inlining: a temporary which is assigned to and then
---       used, once, can be shorted.
---   (c) Replacement of references to GlobalRegs which do not have
---       machine registers by the appropriate memory load (eg.
---       Hp ==>  *(BaseReg + 34) ).
--- 
-cmmToCmm :: RawCmmTop -> RawCmmTop
-cmmToCmm top@(CmmData _ _) = top
-cmmToCmm (CmmProc info lbl params (ListGraph blocks)) =
-    let blocks'  = map cmmBlockConFold (cmmMiniInline blocks)
-        blocks'' = map cmmAddReturn blocks'
-    in CmmProc info lbl params (ListGraph $ blocks'')
-
 -- | This checks that a Cmm block ends with a control flow statement as the LLVM
 -- code gen requires this property to generate correct code. If no control flow
 -- statement is present, then a 'return void' is added.
-cmmAddReturn :: CmmBasicBlock -> CmmBasicBlock
-cmmAddReturn blk@(BasicBlock id stmts) =
-    let front = take (length stmts - 1) stmts
-        end   = last stmts
-    in case end of
-        CmmNop -- strip out nop and check again
-            -> cmmAddReturn (BasicBlock id front)
+fixMissingRet :: RawCmmTop -> RawCmmTop
 
-        CmmComment _ -- strip out comment and check again
-            -> cmmAddReturn (BasicBlock id front)
+fixMissingRet top@(CmmData _ _) = top
 
-        CmmCall _ _ _ _ _
-            -> blk
+fixMissingRet (CmmProc info lbl params (ListGraph blks))
+  = CmmProc info lbl params (ListGraph $ map cmmAddRet blks)
+    where
+        cmmAddRet blk@(BasicBlock id stmts) =
+            let front = take (length stmts - 1) stmts
+                end   = last stmts
+            in case end of
+                CmmNop -- strip out nop and check again
+                    -> cmmAddRet (BasicBlock id front)
 
-        CmmBranch _
-            -> blk
+                CmmComment _ -- strip out comment and check again
+                    -> cmmAddRet (BasicBlock id front)
 
-        CmmCondBranch _ _
-            -> blk
+                CmmCall _ _ _ _ _
+                    -> blk
 
-        CmmSwitch _ _
-            -> blk
+                CmmBranch _
+                    -> blk
 
-        CmmJump _ _
-            -> blk
+                CmmCondBranch _ _
+                    -> blk
 
-        CmmReturn _
-            -> blk
+                CmmSwitch _ _
+                    -> blk
 
-        _other
-            -> (BasicBlock id $ stmts ++ [(CmmReturn [])])
+                CmmJump _ _
+                    -> blk
 
-cmmBlockConFold :: CmmBasicBlock -> CmmBasicBlock
-cmmBlockConFold (BasicBlock id stmts) =
-    let stmts' = map cmmStmtConFold stmts
-    in BasicBlock id stmts'
+                CmmReturn _
+                    -> blk
 
-cmmStmtConFold :: CmmStmt -> CmmStmt
-cmmStmtConFold stmt
-    = case stmt of
-        CmmAssign reg src
-            -> let src' = cmmExprConFold src
-               in case src' of
-                      CmmReg reg' | reg == reg' -> CmmNop
-                      new_src -> CmmAssign reg new_src
-
-        CmmStore addr src
-            -> let addr' = cmmExprConFold addr
-                   src'  = cmmExprConFold src
-               in CmmStore addr' src'
-
-        CmmJump addr regs
-            -> let addr' = cmmExprConFold addr
-               in CmmJump addr' regs
-
-        CmmCall target regs args srt returns
-            -> let target' = case target of
-                        CmmCallee e conv ->
-                            let e' = cmmExprConFold e
-                            in CmmCallee e' conv
-                        other -> other
-                   args' = map (\(CmmHinted arg hint) ->
-                           let arg' = cmmExprConFold arg
-                           in (CmmHinted arg' hint)) args
-               in CmmCall target' regs args' srt returns
-
-        CmmCondBranch test dest
-            -> let test' = cmmExprConFold test
-               in case test' of
-                      CmmLit (CmmInt 0 _) ->
-                          CmmComment (mkFastString ("deleted: " ++
-                              showSDoc (pprStmt stmt)))
-
-                      CmmLit (CmmInt _ _) -> CmmBranch dest
-
-                      _other -> CmmCondBranch test' dest
-
-        CmmSwitch expr ids
-            -> let expr' = cmmExprConFold expr
-               in CmmSwitch expr' ids
-
-        other
-            -> other
-
-
-cmmExprConFold :: CmmExpr -> CmmExpr
-cmmExprConFold expr
-    = case expr of
-        CmmLoad addr rep
-            -> let addr' = cmmExprConFold addr
-               in CmmLoad addr' rep
-
-        CmmMachOp mop args
-            -- For MachOps, we first optimize the children, and then we try
-            -- our hand at some constant-folding.
-             -> let args' = map (cmmExprConFold) args
-                in cmmMachOpFold mop args'
-
-        CmmReg (CmmGlobal mid)
-            -- Replace register leaves with appropriate StixTrees for
-            -- the given target.  MagicIds which map to a reg on this
-            -- arch are left unchanged.  For the rest, BaseReg is taken
-            -- to mean the address of the reg table in MainCapability,
-            -- and for all others we generate an indirection to its
-            -- location in the register table.
-            -> case getGlobalRegAddr mid of
-                    Left  _realreg -> expr
-                    Right baseRegAddr
-                        -> case mid of
-                            BaseReg -> cmmExprConFold baseRegAddr
-                            _other  -> cmmExprConFold
-                                           (CmmLoad baseRegAddr (globalRegType mid))
-
-            -- eliminate zero offsets
-        CmmRegOff reg 0
-            -> cmmExprConFold (CmmReg reg)
-
-        CmmRegOff (CmmGlobal mid) offset
-            -- RegOf leaves are just a shorthand form. If the reg maps
-            -- to a real reg, we keep the shorthand, otherwise, we just
-            -- expand it and defer to the above code.
-            -> case getGlobalRegAddr mid of
-                    Left  _realreg -> expr
-                    Right _baseRegAddr
-                        -> cmmExprConFold (CmmMachOp (MO_Add wordWidth) [
-                                CmmReg (CmmGlobal mid),
-                                CmmLit (CmmInt (fromIntegral offset)
-                                    wordWidth)])
-
-        other
-            -> other
+                _other
+                    -> (BasicBlock id $ stmts ++ [(CmmReturn [])])
 
