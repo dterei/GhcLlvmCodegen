@@ -7,6 +7,7 @@ module LlvmCodeGen.Regs (
     ) where
 
 #include "HsVersions.h"
+#include "../includes/stg/MachRegs.h"
 
 import Llvm
 
@@ -14,33 +15,72 @@ import CmmExpr
 import Outputable ( panic )
 
 -- | Here is where the STG register map is defined for each target arch.
+-- The order matters! We must make sure to maintain the order here
+-- with the order used in the LLVM calling conventions.
 activeStgRegs :: [GlobalReg]
-activeStgRegs
-#ifdef NO_REGS
-  = []
-
-#elif defined(i386_TARGET_ARCH)
-  = [BaseReg, Sp, Hp, VanillaReg 1 VGcPtr]
-
-#elif defined(x86_64_TARGET_ARCH)
-  = [BaseReg, Sp, Hp, VanillaReg 1 VGcPtr, VanillaReg 2 VGcPtr,
-     VanillaReg 3 VGcPtr, VanillaReg 4 VGcPtr, VanillaReg 5 VGcPtr,
-     VanillaReg 6 VGcPtr, SpLim, FloatReg 1, FloatReg 2, FloatReg 3,
-     FloatReg 4, DoubleReg 1, DoubleReg 2]
-
-#else
-  = panic $ "LlvmCodeGen.Regs: Registered mode with LLVM back-end not "
-        ++ "supported for this architecture"
+activeStgRegs = [
+#ifdef REG_Base
+    BaseReg
 #endif
+#ifdef REG_Sp 
+    ,Sp
+#endif 
+#ifdef REG_Hp 
+    ,Hp
+#endif
+#ifdef REG_R1
+    ,VanillaReg 1 VGcPtr
+#endif  
+#ifdef REG_R2  
+    ,VanillaReg 2 VGcPtr
+#endif  
+#ifdef REG_R3  
+    ,VanillaReg 3 VGcPtr
+#endif  
+#ifdef REG_R4  
+    ,VanillaReg 4 VGcPtr
+#endif  
+#ifdef REG_R5  
+    ,VanillaReg 5 VGcPtr
+#endif  
+#ifdef REG_R6  
+    ,VanillaReg 6 VGcPtr
+#endif  
+#ifdef REG_SpLim 
+    ,SpLim
+#endif 
+#ifdef REG_F1
+    ,FloatReg 1
+#endif
+#ifdef REG_F2
+    ,FloatReg 2
+#endif
+#ifdef REG_F3
+    ,FloatReg 3
+#endif
+#ifdef REG_F4
+    ,FloatReg 4
+#endif
+#ifdef REG_D1
+    ,DoubleReg 1
+#endif
+#ifdef REG_D2
+    ,DoubleReg 2
+#endif
+    ]
 
 -- | Get the LlvmVar function variable storing the real register
 lmGlobalRegVar :: GlobalReg -> LlvmVar
-lmGlobalRegVar = lmGlobalReg "_Reg"
+lmGlobalRegVar = lmGlobalReg "_Var"
 
 -- | Get the LlvmVar function argument storing the real register
 lmGlobalRegArg :: GlobalReg -> LlvmVar
 lmGlobalRegArg = (pVarLower . lmGlobalReg "_Arg")
 
+{- Need to make sure the names here can't conflict with the unique generated
+   names. Uniques generated names containing only base62 chars. So using say
+    the '_' char guarantees this.
+-}
 lmGlobalReg :: String -> GlobalReg -> LlvmVar
 lmGlobalReg suf rr
   = case rr of

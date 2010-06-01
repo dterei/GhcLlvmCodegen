@@ -10,7 +10,6 @@ import LlvmCodeGen.Base
 import LlvmCodeGen.CodeGen
 import LlvmCodeGen.Data
 import LlvmCodeGen.Ppr
-import LlvmCodeGen.Regs
 
 import qualified AsmCodeGen as Asm
 import Cmm
