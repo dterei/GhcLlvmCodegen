@@ -35,11 +35,6 @@ Possible Problems
 
  - tail call only supported on x86/x86-64 and PowerPC. SPARC?
 
- - Using hardcoded names for my implementation of STG virtual registers. I
- think this is fine but should check what are the rules for the unique name
- generator to make sure it can't confict. Or perhaps generate unique names for
- them at the start of each function.
-
 
 Todo
 ~~~~
@@ -66,13 +61,6 @@ Todo
 
  - handling of llvmvar or llvmtype for func sig isnt nice. Whole func sig
  handling could be better really.
-
- - handling of global regs and custom calling convention ugly. Lots of very
- similar code, need to change to handle multiple architectures easily.
- DONE: improved a fair amount. Could still see if can be cleaned up more. Could
- extend the RealReg type for example to include name and llvm type, making the
- getRealRegReg and getRealRegArg functions very simple (and removing the
- lmBase... functions).
 
  - LlvmCodeGen.CodeGen.genCall code for foreign calls is quite complex, could
  use a cleanup.
