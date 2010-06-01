@@ -14,6 +14,7 @@ import BlockId
 import CLabel
 import Cmm
 import qualified PprCmm
+import OrdList
 
 import BasicTypes
 import FastString
@@ -23,6 +24,8 @@ import qualified Outputable
 import UniqSupply
 import Unique
 import Util
+
+type LlvmStatements = OrdList LlvmStatement
 
 -- -----------------------------------------------------------------------------
 -- | Top-level of the llvm proc codegen
@@ -72,8 +75,8 @@ basicBlockCodeGen ::  LlvmEnv
                   -> CmmBasicBlock
                   -> UniqSM ( LlvmEnv, [LlvmBasicBlock], [LlvmCmmTop] )
 basicBlockCodeGen env (BasicBlock id stmts)
-  = do (env', instrs, top) <- stmtsToInstrs env stmts ([], [])
-       return (env', [(BasicBlock id instrs)], top)
+  = do (env', instrs, top) <- stmtsToInstrs env stmts (nilOL, [])
+       return (env', [BasicBlock id (fromOL instrs)], top)
 
 
 -- | Allocations need to be extracted so they can be moved to the entry
@@ -95,20 +98,20 @@ dominateAllocs (BasicBlock id stmts)
 
 -- A statement conversion return data.
 --   * LlvmEnv: The new enviornment
---   * LlvmStatement: The compiled llvm statements.
+--   * LlvmStatements: The compiled llvm statements.
 --   * LlvmCmmTop: Any global data needed.
-type StmtData = (LlvmEnv, [LlvmStatement], [LlvmCmmTop])
+type StmtData = (LlvmEnv, LlvmStatements, [LlvmCmmTop])
 
 
 -- | Convert a list of CmmStmt's to LlvmStatement's
-stmtsToInstrs :: LlvmEnv -> [CmmStmt] -> ([LlvmStatement], [LlvmCmmTop])
+stmtsToInstrs :: LlvmEnv -> [CmmStmt] -> (LlvmStatements, [LlvmCmmTop])
               -> UniqSM StmtData
 stmtsToInstrs env [] (llvm, top)
   = return (env, llvm, top)
 
 stmtsToInstrs env (stmt : stmts) (llvm, top)
    = do (env', instrs, tops) <- stmtToInstrs env stmt
-        stmtsToInstrs env' stmts (llvm ++ instrs, top ++ tops)
+        stmtsToInstrs env' stmts (llvm `appOL` instrs, top ++ tops)
 
 
 -- | Convert a CmmStmt to a list of LlvmStatement's
@@ -116,9 +119,10 @@ stmtToInstrs :: LlvmEnv -> CmmStmt
              -> UniqSM StmtData
 stmtToInstrs env stmt = case stmt of
 
-    CmmNop               -> return (env, [], [])
-    CmmComment _         -> return (env, [], []) -- nuke comments
---  CmmComment s         -> return (env, [Comment (lines $ unpackFS s)], [])
+    CmmNop               -> return (env, nilOL, [])
+    CmmComment _         -> return (env, nilOL, []) -- nuke comments
+--  CmmComment s         -> return (env, unitOL $ Comment (lines $ unpackFS s),
+--                                  [])
 
     CmmAssign reg src    -> genAssign env reg src
     CmmStore addr src    -> genStore env addr src
@@ -136,8 +140,7 @@ stmtToInstrs env stmt = case stmt of
 
     -- CPS, only tail calls, no return's
     CmmReturn _
-        -> return (env, [Return $ LMLocalVar "void" LMVoid], [])
-        -- -> panic "stmtToInstrs: return statement should have been cps'd away"
+        -> return (env, unitOL $ Return $ LMLocalVar "void" LMVoid, [])
 
 
 -- | Foreign Calls
@@ -167,7 +170,7 @@ genCall env (CmmPrim MO_WriteBarrier) _ _ _ = do
     let s1 = Expr $ Call StdCall fv args llvmStdFunAttrs
     let env' = funInsert fname fty env
 
-    return (env', [s1], tops)
+    return (env', unitOL s1, tops)
 
     where
         lmTrue :: LlvmVar
@@ -224,7 +227,7 @@ genCall env target res args ret = do
             LlvmFunctionDecl name ExternallyVisible lmconv retTy FixedArgs argTy
 
     -- get paramter values
-    (env1, argVars, stmts1, top1) <- arg_vars env args ([], [], [])
+    (env1, argVars, stmts1, top1) <- arg_vars env args ([], nilOL, [])
 
     -- get the return register
     let ret_reg ([CmmHinted reg hint]) = (reg, hint)
@@ -240,7 +243,7 @@ genCall env target res args ret = do
                     Just ty'@(LMFunction sig) -> do
                         -- Function in module in right form
                         let fun = LMGlobalVar name ty' (funcLinkage sig)
-                        return (env1, fun, [], [])
+                        return (env1, fun, nilOL, [])
 
                     Just _ -> do
                         -- label in module but not function pointer, convert
@@ -248,7 +251,7 @@ genCall env target res args ret = do
                         let fun = LMGlobalVar name fty (funcLinkage sig)
                         (v1, s1) <- doExpr (pLift fty)
                                         $ Cast LM_Bitcast fun (pLift fty)
-                        return  (env1, v1, [s1], [])
+                        return  (env1, v1, unitOL s1, [])
 
                     Nothing -> do
                         -- label not in module, create external reference
@@ -256,7 +259,7 @@ genCall env target res args ret = do
                         let fun = LMGlobalVar name fty (funcLinkage sig)
                         let top = CmmData Data [([],[fty])]
                         let env' = funInsert name fty env1
-                        return (env', fun, [], [top])
+                        return (env', fun, nilOL, [top])
 
             CmmCallee expr _ -> do
                 (env', v1, stmts, top) <- exprToVar env1 expr
@@ -269,7 +272,7 @@ genCall env target res args ret = do
                                 ++ " call! (" ++ show (ty) ++ ")"
 
                 (v2,s1) <- doExpr (pLift fty) $ Cast cast v1 (pLift fty)
-                return (env', v2, stmts ++ [s1], top)
+                return (env', v2, stmts `snocOL` s1, top)
 
             CmmPrim mop -> do
                 let name = cmmPrimOpFunctions mop
@@ -279,27 +282,27 @@ genCall env target res args ret = do
 
     (env2, fptr, stmts2, top2) <- getFunPtr target
 
-    let retStmt | ccTy == TailCall       = [Return (LMLocalVar "void" LMVoid)]
-                | ret == CmmNeverReturns = [Unreachable]
-                | otherwise              = []
+    let retStmt | ccTy == TailCall       = unitOL $ Return (LMLocalVar "void" LMVoid)
+                | ret == CmmNeverReturns = unitOL $ Unreachable
+                | otherwise              = nilOL
 
     -- make the actual call
     case retTy of
         LMVoid -> do
             let s1 = Expr $ Call ccTy fptr argVars fnAttrs
-            let allStmts = stmts1 ++ stmts2 ++ [s1] ++ retStmt
+            let allStmts = stmts1 `appOL` stmts2 `snocOL` s1 `appOL` retStmt
             return (env2, allStmts, top1 ++ top2)
 
         _ -> do
             let (creg, _) = ret_reg res
             let (env3, vreg, stmts3, top3) = getCmmReg env2 (CmmLocal creg)
-            let allStmts = stmts1 ++ stmts2 ++ stmts3
+            let allStmts = stmts1 `appOL` stmts2 `appOL` stmts3
             (v1, s1) <- doExpr retTy $ Call ccTy fptr argVars fnAttrs
             if retTy == pLower (getVarType vreg)
                 then do
                     let s2 = Store v1 vreg
-                    return (env3, allStmts ++ [s1,s2] ++ retStmt,
-                            top1 ++ top2 ++ top3)
+                    return (env3, allStmts `snocOL` s1 `snocOL` s2
+                            `appOL` retStmt, top1 ++ top2 ++ top3)
                 else do
                     let ty = pLower $ getVarType vreg
                     let op = case ty of
@@ -311,15 +314,15 @@ genCall env target res args ret = do
 
                     (v2, s2) <- doExpr ty $ Cast op v1 ty
                     let s3 = Store v2 vreg
-                    return (env3, allStmts ++ [s1,s2,s3] ++ retStmt,
-                            top1 ++ top2 ++ top3)
+                    return (env3, allStmts `snocOL` s1 `snocOL` s2 `snocOL` s3
+                            `appOL` retStmt, top1 ++ top2 ++ top3)
 
 
 -- | Conversion of call arguments.
 arg_vars :: LlvmEnv
          -> HintedCmmActuals
-         -> ([LlvmVar], [LlvmStatement], [LlvmCmmTop])
-         -> UniqSM (LlvmEnv, [LlvmVar], [LlvmStatement], [LlvmCmmTop])
+         -> ([LlvmVar], LlvmStatements, [LlvmCmmTop])
+         -> UniqSM (LlvmEnv, [LlvmVar], LlvmStatements, [LlvmCmmTop])
 
 arg_vars env [] (vars, stmts, tops)
   = return (env, vars, stmts, tops)
@@ -334,11 +337,11 @@ arg_vars env (CmmHinted e AddrHint:rest) (vars, stmts, tops)
                            ++ show a ++ ")"
 
        (v2, s1) <- doExpr (pLift i8) $ Cast op v1 (pLift i8)
-       arg_vars env' rest (vars ++ [v2], stmts ++ stmts' ++ [s1], tops ++ top')
+       arg_vars env' rest (vars ++ [v2], stmts `appOL` stmts' `snocOL` s1, tops ++ top')
 
 arg_vars env (CmmHinted e _:rest) (vars, stmts, tops)
   = do (env', v1, stmts', top') <- exprToVar env e
-       arg_vars env' rest (vars ++ [v1], stmts ++ stmts', tops ++ top')
+       arg_vars env' rest (vars ++ [v1], stmts `appOL` stmts', tops ++ top')
 
 -- | Decide what C function to use to implement a CallishMachOp
 cmmPrimOpFunctions :: CallishMachOp -> FastString
@@ -390,7 +393,7 @@ genJump env (CmmLit (CmmLabel lbl)) = do
     (stgRegs, stgStmts) <- funEpilogue
     let s1  = Expr $ Call TailCall vf stgRegs llvmStdFunAttrs
     let s2  = Return (LMLocalVar "void" LMVoid)
-    return (env', stmts ++ stgStmts ++ [s1,s2], top)
+    return (env', stmts `appOL` stgStmts `snocOL` s1 `snocOL` s2, top)
 
 
 -- Call to unknown function / address
@@ -409,7 +412,8 @@ genJump env expr = do
     (stgRegs, stgStmts) <- funEpilogue
     let s2 = Expr $ Call TailCall v1 stgRegs llvmStdFunAttrs
     let s3 = Return (LMLocalVar "void" LMVoid)
-    return (env', stmts ++ [s1] ++ stgStmts ++ [s2,s3], top)
+    return (env', stmts `snocOL` s1 `appOL` stgStmts `snocOL` s2 `snocOL` s3,
+            top)
 
 
 -- | CmmAssign operation
@@ -421,7 +425,7 @@ genAssign env reg val = do
     let (env1, vreg, stmts1, top1) = getCmmReg env reg
     (env2, vval, stmts2, top2) <- exprToVar env1 val
     let s1 = Store vval vreg
-    return (env2, stmts1 ++ stmts2 ++ [s1], top1 ++ top2)
+    return (env2, stmts1 `appOL` stmts2 `snocOL` s1, top1 ++ top2)
 
 
 -- | CmmStore operation
@@ -434,7 +438,8 @@ genStore env addr val = do
             let vty = pLift $ getVarType vval
             (vptr, s1) <- doExpr vty $ Cast LM_Inttoptr vaddr vty
             let s2 = Store vval vptr
-            return (env2, stmts1 ++ stmts2 ++ [s1, s2], top1 ++ top2)
+            return (env2, stmts1 `appOL` stmts2 `snocOL` s1 `snocOL` s2,
+                    top1 ++ top2)
 
         else
             panic $ "genStore: ptr not of word size! (" ++ show vaddr ++ ")"
@@ -444,7 +449,7 @@ genStore env addr val = do
 genBranch :: LlvmEnv -> BlockId -> UniqSM StmtData
 genBranch env id =
     let label = blockIdToLlvm id
-    in return (env, [Branch label], [])
+    in return (env, unitOL $ Branch label, [])
 
 
 -- | Conditional branch
@@ -456,9 +461,9 @@ genCondBranch env cond idT = do
     (env', vc, stmts, top) <- exprToVarOpt env i1Option cond
     if getVarType vc == i1
         then do
-            let stmt1 = BranchIf vc labelT labelF
-            let stmt2 = MkLabel idF
-            return $ (env', stmts ++ [stmt1, stmt2], top)
+            let s1 = BranchIf vc labelT labelF
+            let s2 = MkLabel idF
+            return $ (env', stmts `snocOL` s1 `snocOL` s2, top)
         else
             panic $ "genCondBranch: Cond expr not bool! (" ++ show vc ++ ")"
 
@@ -477,8 +482,8 @@ genSwitch env cond maybe_ids = do
     -- out of range is undefied, so lets just branch to first label
     let (_, defLbl) = head labels
 
-    let stmt1 = Switch vc defLbl labels
-    return $ (env', stmts ++ [stmt1], top)
+    let s1 = Switch vc defLbl labels
+    return $ (env', stmts `snocOL` s1, top)
 
 
 -- -----------------------------------------------------------------------------
@@ -528,7 +533,7 @@ exprToVarOpt env opt e = case e of
     CmmReg r -> do
         let (env', vreg, stmts, top) = getCmmReg env r
         (v1, s1) <- doExpr (pLower $ getVarType vreg) $ Load vreg
-        return (env', v1, stmts ++ [s1], top)
+        return (env', v1, stmts `snocOL` s1 , top)
 
     CmmMachOp op exprs
         -> genMachOp env opt op exprs
@@ -576,19 +581,19 @@ genMachOp env _ op [x] = case op of
         negate ty v2 negOp = do
             (env', vx, stmts, top) <- exprToVar env x
             (v1, s1) <- doExpr ty $ LlvmOp negOp v2 vx
-            return (env', v1, stmts ++ [s1], top)
+            return (env', v1, stmts `snocOL` s1, top)
 
         fiConv ty convOp = do
             (env', vx, stmts, top) <- exprToVar env x
             (v1, s1) <- doExpr ty $ Cast convOp vx ty
-            return (env', v1, stmts ++ [s1], top)
+            return (env', v1, stmts `snocOL` s1, top)
 
         sameConv from ty reduce expand = do
             (env', vx, stmts, top) <- exprToVar env x
             let op = if widthInBits from > llvmWidthInBits ty
                         then reduce else expand
             (v1, s1) <- doExpr ty $ Cast op vx ty
-            return (env', v1, stmts ++ [s1], top)
+            return (env', v1, stmts `snocOL` s1, top)
 
 
 -- Binary MachOp
@@ -649,7 +654,8 @@ genMachOp env opt op [x, y] = case op of
             if getVarType vx == getVarType vy
                 then do
                     (v1, s1) <- doExpr (ty vx) $ binOp vx vy
-                    return (env2, v1, stmts1 ++ stmts2 ++ [s1], top1 ++ top2)
+                    return (env2, v1, stmts1 `appOL` stmts2 `snocOL` s1,
+                            top1 ++ top2)
 
                 else do
                     -- XXX: Error. Continue anyway so we can debug the generated
@@ -657,7 +663,8 @@ genMachOp env opt op [x, y] = case op of
                     let dx = Comment $ lines.show.llvmSDoc.PprCmm.pprExpr $ x
                     let dy = Comment $ lines.show.llvmSDoc.PprCmm.pprExpr $ y
                     (v1, s1) <- doExpr (ty vx) $ binOp vx vy
-                    let allStmts = stmts1 ++ stmts2 ++ [dx,dy,s1]
+                    let allStmts = stmts1 `appOL` stmts2 `snocOL` dx
+                                    `snocOL` dy `snocOL` s1
                     return (env2, v1, allStmts, top1 ++ top2)
 
                     -- let o = case binOp vx vy of
@@ -686,7 +693,7 @@ genMachOp env opt op [x, y] = case op of
 
                                 | isInt t -> do
                                     (v2, s1) <- doExpr t $ Cast LM_Zext v1 t
-                                    return (env', v2, stmts ++ [s1], top)
+                                    return (env', v2, stmts `snocOL` s1, top)
 
                                 | otherwise ->
                                     panic $ "genBinComp: Can't case i1 compare"
@@ -722,9 +729,10 @@ genMachOp env opt op [x, y] = case op of
                     (rhigh1, s6) <- doExpr word2 $ LlvmOp LM_MO_AShr r1 shift2
                     (rhigh2, s7) <- doExpr word $ Cast LM_Trunc rhigh1 word
                     (dst, s8)    <- doExpr word $ LlvmOp LM_MO_Sub rlow2 rhigh2
-
-                    return (env2, dst, stmts1 ++ stmts2 ++
-                            [s1, s2, s3, s4, s5, s6, s7, s8], top1 ++ top2)
+                    let stmts = (unitOL s1) `snocOL` s2 `snocOL` s3 `snocOL` s4
+                            `snocOL` s5 `snocOL` s6 `snocOL` s7 `snocOL` s8
+                    return (env2, dst, stmts1 `appOL` stmts2 `appOL` stmts,
+                        top1 ++ top2)
 
                 else
                     panic $ "isSMulOK: Not bit type! (" ++ show word ++ ")"
@@ -744,7 +752,7 @@ genCmmLoad env e ty = do
                     let pty = LMPointer $ cmmToLlvmType ty
                     (ptr, cast)  <- doExpr pty $ Cast LM_Inttoptr iptr pty
                     (dvar, load) <- doExpr (cmmToLlvmType ty) $ Load ptr
-                    return (env', dvar, stmts ++ [cast, load], tops)
+                    return (env', dvar, stmts `snocOL` cast `snocOL` load, tops)
 
               | otherwise
                 -> pprPanic
@@ -771,19 +779,19 @@ getCmmReg env r@(CmmLocal (LocalReg un _))
         (newv, stmts) = allocReg r
         nenv = varInsert name (pLower $ getVarType newv) env
     in case exists of
-            Just ety -> (env, (LMLocalVar name $ pLift ety), [], [])
+            Just ety -> (env, (LMLocalVar name $ pLift ety), nilOL, [])
             Nothing  -> (nenv, newv, stmts, [])
 
-getCmmReg env (CmmGlobal g) = (env, lmGlobalRegVar g, [], [])
+getCmmReg env (CmmGlobal g) = (env, lmGlobalRegVar g, nilOL, [])
 
 
 -- | Allocate a CmmReg on the stack
-allocReg :: CmmReg -> (LlvmVar, [LlvmStatement])
+allocReg :: CmmReg -> (LlvmVar, LlvmStatements)
 allocReg (CmmLocal (LocalReg un ty))
   = let ty' = cmmToLlvmType ty
         var = LMLocalVar (uniqToStr un) (LMPointer ty')
         alc = Alloca ty' 1
-    in (var, [Assignment var alc])
+    in (var, unitOL $ Assignment var alc)
 
 allocReg _ = panic $ "allocReg: Global reg encountered! Global registers should"
                     ++ " have been handled elsewhere!"
@@ -792,10 +800,10 @@ allocReg _ = panic $ "allocReg: Global reg encountered! Global registers should"
 -- | Generate code for a literal
 genLit :: LlvmEnv -> CmmLit -> UniqSM ExprData
 genLit env (CmmInt i w)
-  = return (env, mkIntLit i (LMInt $ widthInBits w), [], [])
+  = return (env, mkIntLit i (LMInt $ widthInBits w), nilOL, [])
 
 genLit env (CmmFloat r w)
-  = return (env, LMLitVar $ LMFloatLit r (widthToLlvmFloat w), [], [])
+  = return (env, LMLitVar $ LMFloatLit r (widthToLlvmFloat w), nilOL, [])
 
 genLit env cmm@(CmmLabel l)
   = let label = strCLabel_llvm l
@@ -808,19 +816,19 @@ genLit env cmm@(CmmLabel l)
                 let ldata = [CmmData Data [([glob], [])]]
                 let env' = funInsert label (pLower $ getVarType var) env
                 (v1, s1) <- doExpr lmty $ Cast LM_Ptrtoint var llvmWord
-                return (env', v1, [s1], ldata)
+                return (env', v1, unitOL s1, ldata)
             -- Referenced data exists in this module, retrieve type and make
             -- pointer to it.
             Just ty' -> do
                 let var = LMGlobalVar label (LMPointer ty') ExternallyVisible
                 (v1, s1) <- doExpr lmty $ Cast LM_Ptrtoint var llvmWord
-                return (env, v1, [s1], [])
+                return (env, v1, unitOL s1, [])
 
 genLit env (CmmLabelOff label off) = do
     (env', vlbl, stmts, stat) <- genLit env (CmmLabel label)
     let voff = mkIntLit off llvmWord
     (v1, s1) <- doExpr (getVarType vlbl) $ LlvmOp LM_MO_Add vlbl voff
-    return (env', v1, stmts ++ [s1], stat)
+    return (env', v1, stmts `snocOL` s1, stat)
 
 genLit env (CmmLabelDiffOff l1 l2 off) = do
     (env1, vl1, stmts1, stat1) <- genLit env (CmmLabel l1)
@@ -834,7 +842,8 @@ genLit env (CmmLabelDiffOff l1 l2 off) = do
        then do
             (v1, s1) <- doExpr (getVarType vl1) $ LlvmOp LM_MO_Sub vl1 vl2
             (v2, s2) <- doExpr (getVarType v1 ) $ LlvmOp LM_MO_Add v1 voff
-            return (env2, v2, stmts1 ++ stmts2 ++ [s1, s2], stat1 ++ stat2)
+            return (env2, v2, stmts1 `appOL` stmts2 `snocOL` s1 `snocOL` s2,
+                        stat1 ++ stat2)
 
         else
             panic "genLit: CmmLabelDiffOff encountered with different label ty!"
@@ -862,11 +871,14 @@ funPrologue = concat $ map getReg activeStgRegs
 
 
 -- | Function epilogue. Load STG variables to use as argument for call.
-funEpilogue :: UniqSM ([LlvmVar], [LlvmStatement])
+funEpilogue :: UniqSM ([LlvmVar], LlvmStatements)
 funEpilogue = do
-    let loadExpr r = doExpr (pLower $ getVarType r) $ Load r
-    loads <- mapM (\x -> loadExpr $ lmGlobalRegVar x) activeStgRegs
-    return $ unzip loads
+    let loadExpr r = do
+        (v,s) <- doExpr (pLower $ getVarType r) $ Load r
+        return (v, unitOL s)
+    loads <- mapM (loadExpr . lmGlobalRegVar) activeStgRegs
+    let (vars, stmts) = unzip loads
+    return (vars, concatOL stmts)
 
 
 -- | Get a function pointer to the CLabel specified.
@@ -885,20 +897,20 @@ getHsFunc env lbl
         Just ty'@(LMFunction sig) -> do
         -- Function in module in right form
             let fun = LMGlobalVar fn ty' (funcLinkage sig)
-            return (env, fun, [], [])
+            return (env, fun, nilOL, [])
 
         Just ty' -> do
         -- label in module but not function pointer, convert
             let fun = LMGlobalVar fn ty' ExternallyVisible
             (v1, s1) <- doExpr (pLift fty) $ Cast LM_Bitcast fun (pLift fty)
-            return (env, v1, [s1], [])
+            return (env, v1, unitOL s1, [])
 
         Nothing  -> do
         -- label not in module, create external reference
             let fun = LMGlobalVar fn fty ExternallyVisible
             let top = CmmData Data [([],[fty])]
             let env' = funInsert fn fty env
-            return (env', fun, [], [top])
+            return (env', fun, nilOL, [top])
 
 
 -- | Create a new local var

@@ -126,7 +126,6 @@ data LlvmStatement
 
   deriving (Show, Eq)
 
-type LlvmStatements = [LlvmStatement]
 
 -- | Llvm Expressions
 data LlvmExpression
