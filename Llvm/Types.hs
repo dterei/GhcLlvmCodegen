@@ -7,10 +7,7 @@ module Llvm.Types where
 #include "HsVersions.h"
 #include "ghcconfig.h"
 
-import Control.Monad.ST
-import Data.Array.ST
 import Data.Char
-import Data.Word
 import Numeric
 
 import Constants

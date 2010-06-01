@@ -132,7 +132,7 @@ cmmLlvmGen
 cmmLlvmGen dflags us env cmm
   = do
     -- rewrite assignments to global regs
-    let fixed_cmm = (fixMissingRet . fixStgRegisters) cmm
+    let fixed_cmm = fixStgRegisters cmm
 
     dumpIfSet_dyn dflags Opt_D_dump_opt_cmm "Optimised Cmm"
         (pprCmm $ Cmm [fixed_cmm])
@@ -163,49 +163,4 @@ genLlvmCode _ env (CmmProc _ _ _ (ListGraph []))
 
 genLlvmCode _ env cp@(CmmProc _ _ _ _)
     = genLlvmProc env cp
-
-
--- -----------------------------------------------------------------------------
--- | This checks that a Cmm block ends with a control flow statement as the LLVM
--- code gen requires this property to generate correct code. If no control flow
--- statement is present, then a 'return void' is added.
---
-fixMissingRet :: RawCmmTop -> RawCmmTop
-
-fixMissingRet top@(CmmData _ _) = top
-
-fixMissingRet (CmmProc info lbl params (ListGraph blks))
-  = CmmProc info lbl params (ListGraph $ map cmmAddRet blks)
-    where
-        cmmAddRet blk@(BasicBlock id stmts) =
-            let front = take (length stmts - 1) stmts
-                end   = last stmts
-            in case end of
-                CmmNop -- strip out nop and check again
-                    -> cmmAddRet (BasicBlock id front)
-
-                CmmComment _ -- strip out comment and check again
-                    -> cmmAddRet (BasicBlock id front)
-
-                CmmCall _ _ _ _ _
-                    -> blk
-
-                CmmBranch _
-                    -> blk
-
-                CmmCondBranch _ _
-                    -> blk
-
-                CmmSwitch _ _
-                    -> blk
-
-                CmmJump _ _
-                    -> blk
-
-                CmmReturn _
-                    -> blk
-
-                _other
-                    -> (BasicBlock id $ stmts ++ [(CmmReturn [])])
-
 

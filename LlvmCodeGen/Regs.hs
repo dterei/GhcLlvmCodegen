@@ -7,7 +7,6 @@ module LlvmCodeGen.Regs (
     ) where
 
 #include "HsVersions.h"
-#include "../includes/stg/MachRegs.h"
 
 import Llvm
 
