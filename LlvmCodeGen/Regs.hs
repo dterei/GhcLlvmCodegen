@@ -13,61 +13,7 @@ import Llvm
 
 import CmmExpr
 import Outputable ( panic )
-
--- | Here is where the STG register map is defined for each target arch.
--- The order matters! We must make sure to maintain the order here
--- with the order used in the LLVM calling conventions.
-activeStgRegs :: [GlobalReg]
-activeStgRegs = [
-#ifdef REG_Base
-    BaseReg
-#endif
-#ifdef REG_Sp 
-    ,Sp
-#endif 
-#ifdef REG_Hp 
-    ,Hp
-#endif
-#ifdef REG_R1
-    ,VanillaReg 1 VGcPtr
-#endif  
-#ifdef REG_R2  
-    ,VanillaReg 2 VGcPtr
-#endif  
-#ifdef REG_R3  
-    ,VanillaReg 3 VGcPtr
-#endif  
-#ifdef REG_R4  
-    ,VanillaReg 4 VGcPtr
-#endif  
-#ifdef REG_R5  
-    ,VanillaReg 5 VGcPtr
-#endif  
-#ifdef REG_R6  
-    ,VanillaReg 6 VGcPtr
-#endif  
-#ifdef REG_SpLim 
-    ,SpLim
-#endif 
-#ifdef REG_F1
-    ,FloatReg 1
-#endif
-#ifdef REG_F2
-    ,FloatReg 2
-#endif
-#ifdef REG_F3
-    ,FloatReg 3
-#endif
-#ifdef REG_F4
-    ,FloatReg 4
-#endif
-#ifdef REG_D1
-    ,DoubleReg 1
-#endif
-#ifdef REG_D2
-    ,DoubleReg 2
-#endif
-    ]
+import CgUtils ( activeStgRegs )
 
 -- | Get the LlvmVar function variable storing the real register
 lmGlobalRegVar :: GlobalReg -> LlvmVar
@@ -82,8 +28,8 @@ lmGlobalRegArg = (pVarLower . lmGlobalReg "_Arg")
     the '_' char guarantees this.
 -}
 lmGlobalReg :: String -> GlobalReg -> LlvmVar
-lmGlobalReg suf rr
-  = case rr of
+lmGlobalReg suf reg
+  = case reg of
         BaseReg        -> wordGlobal $ "Base" ++ suf
         Sp             -> wordGlobal $ "Sp" ++ suf
         Hp             -> wordGlobal $ "Hp" ++ suf
@@ -100,6 +46,8 @@ lmGlobalReg suf rr
         FloatReg 4     -> floatGlobal $"F4" ++ suf
         DoubleReg 1    -> doubleGlobal $ "D1" ++ suf
         DoubleReg 2    -> doubleGlobal $ "D2" ++ suf
+        _other         -> panic $ "LlvmCodeGen.Reg: GlobalReg (" ++ (show reg)
+                                ++ ") not supported!"
     where
         wordGlobal   name = LMLocalVar name llvmWordPtr
         floatGlobal  name = LMLocalVar name $ pLift LMFloat

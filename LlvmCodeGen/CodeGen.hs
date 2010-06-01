@@ -57,17 +57,8 @@ basicBlocksCodeGen env ([]) (blocks, tops)
   = do let (blocks', allocs) = mapAndUnzip dominateAllocs blocks
        let allocs' = concat allocs
        let ((BasicBlock id fstmts):rblocks) = blocks'
-       let fblocks = (BasicBlock id (stgRegs ++ allocs' ++ fstmts)):rblocks
+       let fblocks = (BasicBlock id (funPrologue ++ allocs' ++ fstmts)):rblocks
        return (env, fblocks, tops)
-  where
-        stgRegs = allocs ++ stores
-        (allocs, stores) = mapAndUnzip getReg activeStgRegs
-        getReg rr =
-            let reg = lmGlobalRegVar rr
-                arg = lmGlobalRegArg rr
-                alloc = Assignment reg $ Alloca (pLower $ getVarType reg) 1
-                store = Store arg reg
-            in (alloc, store)
 
 basicBlocksCodeGen env (block:blocks) (lblocks', ltops')
   = do (env', lb, lt) <- basicBlockCodeGen env block
@@ -396,7 +387,7 @@ genJump :: LlvmEnv -> CmmExpr -> UniqSM StmtData
 -- Call to known function
 genJump env (CmmLit (CmmLabel lbl)) = do
     (env', vf, stmts, top) <- getHsFunc env lbl
-    (stgRegs, stgStmts) <- loadStgRegs
+    (stgRegs, stgStmts) <- funEpilogue
     let s1  = Expr $ Call TailCall vf stgRegs llvmStdFunAttrs
     let s2  = Return (LMLocalVar "void" LMVoid)
     return (env', stmts ++ stgStmts ++ [s1,s2], top)
@@ -415,7 +406,7 @@ genJump env expr = do
                      ++ show (ty) ++ ")"
 
     (v1, s1) <- doExpr (pLift fty) $ Cast cast vf (pLift fty)
-    (stgRegs, stgStmts) <- loadStgRegs
+    (stgRegs, stgStmts) <- funEpilogue
     let s2 = Expr $ Call TailCall v1 stgRegs llvmStdFunAttrs
     let s3 = Return (LMLocalVar "void" LMVoid)
     return (env', stmts ++ [s1] ++ stgStmts ++ [s2,s3], top)
@@ -859,9 +850,20 @@ genLit _ CmmHighStackMark
 -- * Misc
 --
 
--- | Load stg registers
-loadStgRegs :: UniqSM ([LlvmVar], [LlvmStatement])
-loadStgRegs = do
+-- | Function prologue. Load STG arguments into variables for function.
+funPrologue :: [LlvmStatement]
+funPrologue = concat $ map getReg activeStgRegs
+    where getReg rr =
+            let reg = lmGlobalRegVar rr
+                arg = lmGlobalRegArg rr
+                alloc = Assignment reg $ Alloca (pLower $ getVarType reg) 1
+                store = Store arg reg
+            in [alloc, store]
+
+
+-- | Function epilogue. Load STG variables to use as argument for call.
+funEpilogue :: UniqSM ([LlvmVar], [LlvmStatement])
+funEpilogue = do
     let loadExpr r = doExpr (pLower $ getVarType r) $ Load r
     loads <- mapM (\x -> loadExpr $ lmGlobalRegVar x) activeStgRegs
     return $ unzip loads

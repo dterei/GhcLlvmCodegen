@@ -11,15 +11,13 @@ import LlvmCodeGen.CodeGen
 import LlvmCodeGen.Data
 import LlvmCodeGen.Ppr
 
-import qualified AsmCodeGen as Asm
 import Cmm
-import CmmOpt ( cmmMiniInline, cmmMachOpFold )
+import CgUtils ( fixStgRegisters )
 import PprCmm
 
 import BufWrite
 import DynFlags
 import ErrUtils
-import FastString
 import Outputable
 import qualified Pretty as Prt
 import UniqSupply
@@ -49,7 +47,7 @@ llvmCodeGen dflags h us cmms
 
 
 -- -----------------------------------------------------------------------------
--- | Do native code generation on all these cmms data sections.
+-- | Do llvm code generation on all these cmms data sections.
 --
 cmmDataLlvmGens
       :: DynFlags
@@ -99,7 +97,7 @@ cmmDataLlvmGens' dflags h env (cmm:cmms) lmdata
 
 
 -- -----------------------------------------------------------------------------
--- | Do native code generation on all these cmms procs.
+-- | Do llvm code generation on all these cmms procs.
 --
 cmmProcLlvmGens
       :: DynFlags
@@ -126,25 +124,21 @@ cmmLlvmGen
       :: DynFlags
       -> UniqSupply
       -> LlvmEnv
-      -> RawCmmTop             -- ^ the cmm to generate code for
+      -> RawCmmTop              -- ^ the cmm to generate code for
       -> IO ( UniqSupply,
               LlvmEnv,
-              [LlvmCmmTop] )   -- native code
+              [LlvmCmmTop] )   -- llvm code
 
 cmmLlvmGen dflags us env cmm
   = do
     -- rewrite assignments to global regs
-    let (fixed_cmm, usFix) = initUs us $ Asm.fixAssignsTop cmm
-    let fixed_cmm' = fixMissingRet fixed_cmm
-
-    -- cmm to cmm optimisations
-    let (opt_cmm, _) = Asm.cmmToCmm dflags fixed_cmm'
+    let fixed_cmm = (fixMissingRet . fixStgRegisters) cmm
 
     dumpIfSet_dyn dflags Opt_D_dump_opt_cmm "Optimised Cmm"
-        (pprCmm $ Cmm [opt_cmm])
+        (pprCmm $ Cmm [fixed_cmm])
 
-    -- generate native code from cmm
-    let ((env', llvmBC), usGen) = initUs usFix $ genLlvmCode dflags env opt_cmm
+    -- generate llvm code from cmm
+    let ((env', llvmBC), usGen) = initUs us $ genLlvmCode dflags env fixed_cmm
 
     dumpIfSet_dyn dflags Opt_D_dump_llvm "LLVM Code"
         (vcat $ map (docToSDoc . pprLlvmCmmTop dflags) llvmBC)
@@ -175,6 +169,7 @@ genLlvmCode _ env cp@(CmmProc _ _ _ _)
 -- | This checks that a Cmm block ends with a control flow statement as the LLVM
 -- code gen requires this property to generate correct code. If no control flow
 -- statement is present, then a 'return void' is added.
+--
 fixMissingRet :: RawCmmTop -> RawCmmTop
 
 fixMissingRet top@(CmmData _ _) = top
@@ -212,4 +207,5 @@ fixMissingRet (CmmProc info lbl params (ListGraph blks))
 
                 _other
                     -> (BasicBlock id $ stmts ++ [(CmmReturn [])])
+
 
