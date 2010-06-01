@@ -139,6 +139,8 @@ stmtToInstrs env stmt = case stmt of
     CmmJump arg _ -> genJump env arg
 
     -- CPS, only tail calls, no return's
+    -- Actually, there are a few return statements that occur because of hand
+    -- written cmm code.
     CmmReturn _
         -> return (env, unitOL $ Return $ LMLocalVar "void" LMVoid, [])
 
