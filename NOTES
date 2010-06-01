@@ -162,154 +162,158 @@ Review key:
 
 Patch review follows:
 
-hunk ./compiler/ghc.cabal.in 44
-+Flag llvm
-+    Description: Build the LLVM code generator.
-+    Default: False
-+    Manual: True
+== PATCH REVIEW == DONE
 
-CLEAN Is there a good reason to want to disable the LLVM support, or
-can it always be compiled in?
+	hunk ./compiler/ghc.cabal.in 44
+	+Flag llvm
+	+    Description: Build the LLVM code generator.
+	+    Default: False
+	+    Manual: True
 
-+Flag unreg
-+    Description: Build an unregistered version.
-+    Default: False
-+    Manual: True
-+
+	CLEAN Is there a good reason to want to disable the LLVM support, or
+	can it always be compiled in?
 
-XXX Is this necessary?  As far as I'm aware an unregisterised build
-currently works.
+	+Flag unreg
+	+    Description: Build an unregistered version.
+	+    Default: False
+	+    Manual: True
+	+
 
-hunk ./compiler/ghc.cabal.in 101
-+    if flag(llvm)
-+        CPP-Options: -DLLVM
-+        if flag(unreg)
-+            CPP-Options: -DNO_REGS -DUSE_MINIINTERPRETER
+	XXX Is this necessary?  As far as I'm aware an unregisterised build
+	currently works.
 
-XXX Why is this necessary?  These CPP flags are added by GHC itself
-(StaticFlagParser.unregFlags).
+	hunk ./compiler/ghc.cabal.in 101
+	+    if flag(llvm)
+	+        CPP-Options: -DLLVM
+	+        if flag(unreg)
+	+            CPP-Options: -DNO_REGS -DUSE_MINIINTERPRETER
 
-+type LMString   = String
+	XXX Why is this necessary?  These CPP flags are added by GHC itself
+	(StaticFlagParser.unregFlags).
 
-OPT You probably want to use something better than String, perhaps
-FastString.
+== PATCH REVIEW == TODO
 
-+-- | Llvm variables
-+data LlvmVar
-+  -- references to variables with a global scope.
-+  = LMGlobalVar LMString LlvmType LlvmLinkageType
-+  -- references to variables local for a function or parameters.
-+  | LMLocalVar  LMString LlvmType
-+  -- a constant variable
-+  | LMLitVar  LlvmLit
+	+type LMString   = String
 
-OPT Rather than LMString in LMLocalVar, probably Unique would be
-better.  I think you always generate these from a Unique (but I could
-be wrong) in which case it would be better to do that conversion when
-printing.  I'm not sure whether this applies to LMGlobalVar or not.
+	OPT You probably want to use something better than String, perhaps
+	FastString.
 
-+  deriving (Eq)
-+fixAssignsTop :: RawCmmTop -> UniqSM RawCmmTop
-+
-+fixAssignsTop top@(CmmData _ _) = returnUs top
-+
-+fixAssignsTop (CmmProc info lbl params (ListGraph blocks)) =
-+    mapUs fixAssignsBlock blocks `thenUs` \ blocks' ->
-+    returnUs (CmmProc info lbl params (ListGraph blocks'))
-+
+	+-- | Llvm variables
+	+data LlvmVar
+	+  -- references to variables with a global scope.
+	+  = LMGlobalVar LMString LlvmType LlvmLinkageType
+	+  -- references to variables local for a function or parameters.
+	+  | LMLocalVar  LMString LlvmType
+	+  -- a constant variable
+	+  | LMLitVar  LlvmLit
 
-CLEAN I think your local fixAssigns can go away  (see comment with
-LlvmCodeGen.Regs below): use the one from the NCG.
+	OPT Rather than LMString in LMLocalVar, probably Unique would be
+	better.  I think you always generate these from a Unique (but I could
+	be wrong) in which case it would be better to do that conversion when
+	printing.  I'm not sure whether this applies to LMGlobalVar or not.
 
-+cmmToCmm :: RawCmmTop -> RawCmmTop
-+cmmToCmm top@(CmmData _ _) = top
-+cmmToCmm (CmmProc info lbl params (ListGraph blocks)) =
-+    let blocks'  = map cmmBlockConFold (cmmMiniInline blocks)
-+        blocks'' = map cmmAddReturn blocks'
-+    in CmmProc info lbl params (ListGraph $ blocks'')
-+
+	+  deriving (Eq)
+	+fixAssignsTop :: RawCmmTop -> UniqSM RawCmmTop
+	+
+	+fixAssignsTop top@(CmmData _ _) = returnUs top
+	+
+	+fixAssignsTop (CmmProc info lbl params (ListGraph blocks)) =
+	+    mapUs fixAssignsBlock blocks `thenUs` \ blocks' ->
+	+    returnUs (CmmProc info lbl params (ListGraph blocks'))
+	+
 
-CLEAN I think your local cmmToCmm can go away (see comment with
-LlvmCodeGen.Regs below): use the one from the NCG.  We should also
-look into not doing any optimisation at the C-- level at all, since
-LLVM will do it all, however we do need to turn GlobalRegs into
-BaseReg offsets where necessary, which is done by cmmToCmm.
+	CLEAN I think your local fixAssigns can go away  (see comment with
+	LlvmCodeGen.Regs below): use the one from the NCG.
 
-+type LlvmEnvMap = Map.Map LMString LlvmType
+	+cmmToCmm :: RawCmmTop -> RawCmmTop
+	+cmmToCmm top@(CmmData _ _) = top
+	+cmmToCmm (CmmProc info lbl params (ListGraph blocks)) =
+	+    let blocks'  = map cmmBlockConFold (cmmMiniInline blocks)
+	+        blocks'' = map cmmAddReturn blocks'
+	+    in CmmProc info lbl params (ListGraph $ blocks'')
+	+
 
-OPT A Map of Strings is very inefficient compared with a UniqFM of
-FastStrings.
+	CLEAN I think your local cmmToCmm can go away (see comment with
+	LlvmCodeGen.Regs below): use the one from the NCG.  We should also
+	look into not doing any optimisation at the C-- level at all, since
+	LLVM will do it all, however we do need to turn GlobalRegs into
+	BaseReg offsets where necessary, which is done by cmmToCmm.
 
-+type StmtData = (LlvmEnv, [LlvmStatement], [LlvmCmmTop])
+	+type LlvmEnvMap = Map.Map LMString LlvmType
 
-OPT Use OrdList rather than lists here, as you're doing a lot of
-appending.  Append is O(1) in OrdList, O(n) with lists.
+	OPT A Map of Strings is very inefficient compared with a UniqFM of
+	FastStrings.
 
-+type ExprData = (LlvmEnv, LlvmVar, LlvmStatements, [LlvmCmmTop])
+	+type StmtData = (LlvmEnv, [LlvmStatement], [LlvmCmmTop])
 
-OPT Again, LlvmStatements should probably be an OrdList.
+	OPT Use OrdList rather than lists here, as you're doing a lot of
+	appending.  Append is O(1) in OrdList, O(n) with lists.
 
-addfile ./compiler/llvmGen/LlvmCodeGen/Regs.hs
-hunk ./compiler/llvmGen/LlvmCodeGen/Regs.hs 1
-+-- ----------------------------------------------------------------------------
-+-- Deal with Cmm registers
-+--
-+-- Specifically, force use of register table (in memory), not pinned
-+-- hardware registers as the LLVM back-end doesn't support this.
-+--
-+
-+module LlvmCodeGen.Regs (
-+
-+        RealReg, realRegsOrdered, getRealRegReg, getRealRegArg, getGlobalRegAddr
-+
-+    ) where
+	+type ExprData = (LlvmEnv, LlvmVar, LlvmStatements, [LlvmCmmTop])
 
-CLEAN Unless I'm mistaken, most of this module can go away.
+	OPT Again, LlvmStatements should probably be an OrdList.
 
- 1. Use fixAssigns from the NCG.
- 2. Print out GlobalRegs as "stg_whatever..."
+	addfile ./compiler/llvmGen/LlvmCodeGen/Regs.hs
+	hunk ./compiler/llvmGen/LlvmCodeGen/Regs.hs 1
+	+-- ----------------------------------------------------------------------------
+	+-- Deal with Cmm registers
+	+--
+	+-- Specifically, force use of register table (in memory), not pinned
+	+-- hardware registers as the LLVM back-end doesn't support this.
+	+--
+	+
+	+module LlvmCodeGen.Regs (
+	+
+	+        RealReg, realRegsOrdered, getRealRegReg, getRealRegArg, getGlobalRegAddr
+	+
+	+    ) where
 
-Then you don't need to bake in the register mapping (a maintenance
-headache), and a lot of this code can go away: the RealReg type and
-everything using it.
+	CLEAN Unless I'm mistaken, most of this module can go away.
+
+	 1. Use fixAssigns from the NCG.
+	 2. Print out GlobalRegs as "stg_whatever..."
+
+	Then you don't need to bake in the register mapping (a maintenance
+	headache), and a lot of this code can go away: the RealReg type and
+	everything using it.
 
 
-addfile ./compiler/llvmGen/NOTES
-hunk ./compiler/llvmGen/NOTES 1
-+LLVM Back-end for GHC.
-+
-+Author: David Terei
+	addfile ./compiler/llvmGen/NOTES
+	hunk ./compiler/llvmGen/NOTES 1
+	+LLVM Back-end for GHC.
+	+
+	+Author: David Terei
 
-CLEAN Useful-looking docs.  I suggest moving them into either (a) the wiki commentary or (b) the code as appropriate.
+	CLEAN Useful-looking docs.  I suggest moving them into either (a) the wiki commentary or (b) the code as appropriate.
 
-hunk ./compiler/main/CodeOutput.lhs 16
-+#ifdef LLVM
-+#ifdef OMIT_NATIVE_CODEGEN
-+import UniqSupply    ( mkSplitUniqSupply )
-+#endif
-+import qualified LlvmCodeGen ( llvmCodeGen )
-+#endif
-+
-hunk ./compiler/main/CodeOutput.lhs 90
-+             HscLlvm        -> outputLlvm dflags filenm flat_abstractC;
-hunk ./compiler/main/CodeOutput.lhs 176
-+%************************************************************************
-+%*                                    *
-+\subsection{LLVM}
-+%*                                    *
-+%************************************************************************
-+
-+\begin{code}
-+outputLlvm :: DynFlags -> FilePath -> [RawCmm] -> IO ()
-+
-+#ifdef LLVM
-+
-+outputLlvm dflags filenm flat_absC
-+  = do ncg_uniqs <- mkSplitUniqSupply 'n'
-+       doOutput filenm $ \f ->
-+             LlvmCodeGen.llvmCodeGen dflags f ncg_uniqs flat_absC
-+
-+#else /* !LLVM */
+	hunk ./compiler/main/CodeOutput.lhs 16
+	+#ifdef LLVM
+	+#ifdef OMIT_NATIVE_CODEGEN
+	+import UniqSupply    ( mkSplitUniqSupply )
+	+#endif
+	+import qualified LlvmCodeGen ( llvmCodeGen )
+	+#endif
+	+
+	hunk ./compiler/main/CodeOutput.lhs 90
+	+             HscLlvm        -> outputLlvm dflags filenm flat_abstractC;
+	hunk ./compiler/main/CodeOutput.lhs 176
+	+%************************************************************************
+	+%*                                    *
+	+\subsection{LLVM}
+	+%*                                    *
+	+%************************************************************************
+	+
+	+\begin{code}
+	+outputLlvm :: DynFlags -> FilePath -> [RawCmm] -> IO ()
+	+
+	+#ifdef LLVM
+	+
+	+outputLlvm dflags filenm flat_absC
+	+  = do ncg_uniqs <- mkSplitUniqSupply 'n'
+	+       doOutput filenm $ \f ->
+	+             LlvmCodeGen.llvmCodeGen dflags f ncg_uniqs flat_absC
+	+
+	+#else /* !LLVM */
 
-CLEAN suggest removing the #ifdefs and enabling LLVM unconditionally, as above. 
+	CLEAN suggest removing the #ifdefs and enabling LLVM unconditionally, as above. 
 
