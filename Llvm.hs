@@ -42,7 +42,7 @@ module Llvm (
         ppLlvmModule, ppLlvmComments, ppLlvmComment, ppLlvmConstants,
         ppLlvmConstant, ppLlvmGlobals, ppLlvmGlobal, ppLlvmFunctionDecls,
         ppLlvmFunctionDecl, ppLlvmFunctions, ppLlvmFunction, ppLlvmType,
-        ppLlvmTypes
+        ppLlvmTypes, llvmSDoc
 
     ) where
 

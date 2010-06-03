@@ -142,7 +142,7 @@ stmtToInstrs env stmt = case stmt of
     -- Actually, there are a few return statements that occur because of hand
     -- written cmm code.
     CmmReturn _
-        -> return (env, unitOL $ Return $ LMLocalVar "void" LMVoid, [])
+        -> return (env, unitOL $ Return Nothing, [])
 
 
 -- | Foreign Calls
@@ -152,7 +152,7 @@ genCall :: LlvmEnv -> CmmCallTarget -> HintedCmmFormals -> HintedCmmActuals
 -- Write barrier needs to be handled specially as it is implemented as an llvm
 -- intrinsic function.
 genCall env (CmmPrim MO_WriteBarrier) _ _ _ = do
-    let fname = "llvm.memory.barrier"
+    let fname = fsLit "llvm.memory.barrier"
     let funSig =
             LlvmFunctionDecl
                 fname
@@ -265,7 +265,7 @@ genCall env target res args ret = do
 
             CmmCallee expr _ -> do
                 (env', v1, stmts, top) <- exprToVar env1 expr
-                let fty = funTy "dynamic"
+                let fty = funTy $ fsLit "dynamic"
                 let cast = case getVarType v1 of
                      ty | isPointer ty -> LM_Bitcast
                      ty | isInt ty     -> LM_Inttoptr
@@ -284,7 +284,7 @@ genCall env target res args ret = do
 
     (env2, fptr, stmts2, top2) <- getFunPtr target
 
-    let retStmt | ccTy == TailCall       = unitOL $ Return (LMLocalVar "void" LMVoid)
+    let retStmt | ccTy == TailCall       = unitOL $ Return Nothing
                 | ret == CmmNeverReturns = unitOL $ Unreachable
                 | otherwise              = nilOL
 
@@ -394,7 +394,7 @@ genJump env (CmmLit (CmmLabel lbl)) = do
     (env', vf, stmts, top) <- getHsFunc env lbl
     (stgRegs, stgStmts) <- funEpilogue
     let s1  = Expr $ Call TailCall vf stgRegs llvmStdFunAttrs
-    let s2  = Return (LMLocalVar "void" LMVoid)
+    let s2  = Return Nothing
     return (env', stmts `appOL` stgStmts `snocOL` s1 `snocOL` s2, top)
 
 
@@ -413,7 +413,7 @@ genJump env expr = do
     (v1, s1) <- doExpr (pLift fty) $ Cast cast vf (pLift fty)
     (stgRegs, stgStmts) <- funEpilogue
     let s2 = Expr $ Call TailCall v1 stgRegs llvmStdFunAttrs
-    let s3 = Return (LMLocalVar "void" LMVoid)
+    let s3 = Return Nothing
     return (env', stmts `snocOL` s1 `appOL` stgStmts `snocOL` s2 `snocOL` s3,
             top)
 
@@ -457,7 +457,7 @@ genBranch env id =
 -- | Conditional branch
 genCondBranch :: LlvmEnv -> CmmExpr -> BlockId -> UniqSM StmtData
 genCondBranch env cond idT = do
-    idF <- mkUniqStr
+    idF <- getUniqueUs
     let labelT = blockIdToLlvm idT
     let labelF = LMLocalVar idF LMLabel
     (env', vc, stmts, top) <- exprToVarOpt env i1Option cond
@@ -662,8 +662,9 @@ genMachOp env opt op [x, y] = case op of
                 else do
                     -- XXX: Error. Continue anyway so we can debug the generated
                     -- ll file.
-                    let dx = Comment $ lines.show.llvmSDoc.PprCmm.pprExpr $ x
-                    let dy = Comment $ lines.show.llvmSDoc.PprCmm.pprExpr $ y
+                    let cmmToStr = (lines . show . llvmSDoc . PprCmm.pprExpr)
+                    let dx = Comment $ map fsLit $ cmmToStr x
+                    let dy = Comment $ map fsLit $ cmmToStr y
                     (v1, s1) <- doExpr (ty vx) $ binOp vx vy
                     let allStmts = stmts1 `appOL` stmts2 `snocOL` dx
                                     `snocOL` dy `snocOL` s1
@@ -775,13 +776,12 @@ genCmmLoad env e ty = do
 -- This is also the approach recommended by llvm developers.
 getCmmReg :: LlvmEnv -> CmmReg -> ExprData
 getCmmReg env r@(CmmLocal (LocalReg un _))
-  = let name   = uniqToStr un
-        exists = varLookup name env
+  = let exists = varLookup un env
 
         (newv, stmts) = allocReg r
-        nenv = varInsert name (pLower $ getVarType newv) env
+        nenv = varInsert un (pLower $ getVarType newv) env
     in case exists of
-            Just ety -> (env, (LMLocalVar name $ pLift ety), nilOL, [])
+            Just ety -> (env, (LMLocalVar un $ pLift ety), nilOL, [])
             Nothing  -> (nenv, newv, stmts, [])
 
 getCmmReg env (CmmGlobal g) = (env, lmGlobalRegVar g, nilOL, [])
@@ -791,7 +791,7 @@ getCmmReg env (CmmGlobal g) = (env, lmGlobalRegVar g, nilOL, [])
 allocReg :: CmmReg -> (LlvmVar, LlvmStatements)
 allocReg (CmmLocal (LocalReg un ty))
   = let ty' = cmmToLlvmType ty
-        var = LMLocalVar (uniqToStr un) (LMPointer ty')
+        var = LMLocalVar un (LMPointer ty')
         alc = Alloca ty' 1
     in (var, unitOL $ Assignment var alc)
 
@@ -918,8 +918,8 @@ getHsFunc env lbl
 -- | Create a new local var
 mkLocalVar :: LlvmType -> UniqSM LlvmVar
 mkLocalVar ty = do
-    str <- mkUniqStr
-    return $ LMLocalVar str ty
+    un <- getUniqueUs
+    return $ LMLocalVar un ty
 
 
 -- | Execute an expression, assigning result to a var
@@ -939,19 +939,7 @@ expandCmmReg (reg, off)
 
 -- | Convert a block id into a appropriate Llvm label
 blockIdToLlvm :: BlockId -> LlvmVar
-blockIdToLlvm (BlockId id) = LMLocalVar (uniqToStr id) LMLabel
-
-
--- | Create a new uniq LMString
-mkUniqStr :: UniqSM LMString
-mkUniqStr = do
-    us <- getUniqueUs
-    return $ uniqToStr us
-
-
--- | Convert a Unique to a corresponding LMString representation.
-uniqToStr :: Unique -> LMString
-uniqToStr u = (show . llvmSDoc . ppr) u
+blockIdToLlvm bid = LMLocalVar (getUnique bid) LMLabel
 
 
 -- | Create Llvm int Literal

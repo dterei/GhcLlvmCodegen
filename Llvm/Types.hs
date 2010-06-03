@@ -11,6 +11,9 @@ import Data.Char
 import Numeric
 
 import Constants
+import FastString
+import Unique
+
 -- from NCG
 import PprBase
 
@@ -23,7 +26,7 @@ type LMGlobal   = (LlvmVar, Maybe LlvmStatic)
 -- | A global constant variable
 type LMConstant = (LlvmVar, LlvmStatic)
 -- | A String in LLVM
-type LMString   = String
+type LMString   = FastString
 
 
 -- | Llvm Types.
@@ -61,7 +64,7 @@ instance Show LlvmType where
   show (LMFunction (LlvmFunctionDecl _ _ _ r FixedArgs p))
         = (show r) ++ " (" ++ (either commaCat commaCat p) ++ ")"
 
-  show (LMAlias s _   ) = "%" ++ s
+  show (LMAlias s _   ) = "%" ++ unpackFS s
 
 
 -- | Llvm Variables
@@ -69,9 +72,12 @@ data LlvmVar
   -- | Variables with a global scope.
   = LMGlobalVar LMString LlvmType LlvmLinkageType
   -- | Variables local to a function or parameters.
-  | LMLocalVar  LMString LlvmType
+  | LMLocalVar Unique LlvmType
+  -- | Named local variables. Sometimes we need to be able to explicitly name
+  -- variables (e.g for function arguments).
+  | LMNLocalVar LMString LlvmType
   -- | A constant variable
-  | LMLitVar  LlvmLit
+  | LMLitVar LlvmLit
   deriving (Eq)
 
 instance Show LlvmVar where
@@ -114,10 +120,10 @@ data LlvmStatic
   deriving (Eq)
 
 instance Show LlvmStatic where
-  show (LMComment       s) = "; " ++ s
+  show (LMComment       s) = "; " ++ unpackFS s
   show (LMStaticLit   l  ) = show l
   show (LMUninitType    t) = show t ++ " undef"
-  show (LMStaticStr   s t) = show t ++ " c\"" ++ s ++ "\\00\""
+  show (LMStaticStr   s t) = show t ++ " c\"" ++ unpackFS s ++ "\\00\""
 
   show (LMStaticArray d t)
       = let struc = case d of
@@ -168,16 +174,18 @@ commaCat x  = show (head x) ++ (concat $ map (\y -> "," ++ show y) (tail x))
 -- | Return the variable name or value of the 'LlvmVar'
 -- in Llvm IR textual representation (e.g. @\@x@, @%y@ or @42@).
 getName :: LlvmVar -> String
-getName (LMGlobalVar x _ _ ) = "@" ++ x
-getName (LMLocalVar  x _)    = "%" ++ x
-getName (LMLitVar x)         = getLit x
+getName v@(LMGlobalVar _ _ _ ) = "@" ++ getPlainName v
+getName v@(LMLocalVar  _ _   ) = "%" ++ getPlainName v
+getName v@(LMNLocalVar _ _   ) = "%" ++ getPlainName v
+getName v@(LMLitVar    _     ) = getPlainName v
 
 -- | Return the variable name or value of the 'LlvmVar'
 -- in a plain textual representation (e.g. @x@, @y@ or @42@).
 getPlainName :: LlvmVar -> String
-getPlainName (LMGlobalVar x _ _) = x
-getPlainName (LMLocalVar  x _)   = x
-getPlainName (LMLitVar x)        = getLit x
+getPlainName (LMGlobalVar x _ _) = unpackFS x
+getPlainName (LMLocalVar  x _  ) = show x
+getPlainName (LMNLocalVar x _  ) = unpackFS x
+getPlainName (LMLitVar    x    ) = getLit x
 
 -- | Print a literal value. No type.
 getLit :: LlvmLit -> String
@@ -191,8 +199,9 @@ getLit l = error $ "getLit: Usupported LlvmLit type! " ++ show (getLitType l)
 -- | Return the 'LlvmType' of the 'LlvmVar'
 getVarType :: LlvmVar -> LlvmType
 getVarType (LMGlobalVar _ y _) = y
-getVarType (LMLocalVar _  y  ) = y
-getVarType (LMLitVar      l  ) = getLitType l
+getVarType (LMLocalVar  _ y  ) = y
+getVarType (LMNLocalVar _ y  ) = y
+getVarType (LMLitVar    l    ) = getLitType l
 
 -- | Return the 'LlvmType' of a 'LlvmLit'
 getLitType :: LlvmLit -> LlvmType
@@ -241,8 +250,9 @@ pLower x  = error $ show x ++ " is a unlowerable type, need a pointer"
 -- | Lower a variable of 'LMPointer' type.
 pVarLower :: LlvmVar -> LlvmVar
 pVarLower (LMGlobalVar s t l) = LMGlobalVar s (pLower t) l
-pVarLower (LMLocalVar s t   ) = LMLocalVar s (pLower t)
-pVarLower (LMLitVar _)        = error $ "Can't lower a literal type!"
+pVarLower (LMLocalVar  s t  ) = LMLocalVar  s (pLower t)
+pVarLower (LMNLocalVar s t  ) = LMNLocalVar s (pLower t)
+pVarLower (LMLitVar    _    ) = error $ "Can't lower a literal type!"
 
 -- | Test if the given 'LlvmType' is an integer
 isInt :: LlvmType -> Bool
@@ -330,10 +340,10 @@ data LlvmFunctionDecl = LlvmFunctionDecl {
 instance Show LlvmFunctionDecl where
   show (LlvmFunctionDecl n l c r VarArgs p)
         = (show l) ++ " " ++  (show c) ++ " " ++ (show r)
-            ++ " @" ++ n ++ "(" ++ (either commaCat commaCat p) ++ ", ...)"
+            ++ " @" ++ unpackFS n ++ "(" ++ (either commaCat commaCat p) ++ ", ...)"
   show (LlvmFunctionDecl n l c r FixedArgs p)
         = (show l) ++ " " ++  (show c) ++ " " ++ (show r)
-            ++ " @" ++ n ++ "(" ++ (either commaCat commaCat p) ++ ")"
+            ++ " @" ++ unpackFS n ++ "(" ++ (either commaCat commaCat p) ++ ")"
 
 instance Eq LlvmFunctionDecl where
   (LlvmFunctionDecl n1 l1 c1 r1 v1 p1) == (LlvmFunctionDecl n2 l2 c2 r2 v2 p2)

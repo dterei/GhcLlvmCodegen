@@ -17,7 +17,8 @@ module Llvm.PpLlvm (
     ppLlvmFunctionDecls,
     ppLlvmFunctionDecl,
     ppLlvmFunctions,
-    ppLlvmFunction
+    ppLlvmFunction,
+    llvmSDoc
 
     ) where
 
@@ -28,6 +29,8 @@ import Llvm.Types
 
 import Data.List ( intersperse )
 import Pretty
+import qualified Outputable as Outp
+import Unique
 
 --------------------------------------------------------------------------------
 -- * Top Level Print functions
@@ -51,7 +54,7 @@ ppLlvmComments comments = vcat $ map ppLlvmComment comments
 
 -- | Print out a comment, can be inside a function or on its own
 ppLlvmComment :: LMString -> Doc
-ppLlvmComment com = semi <+> (text com)
+ppLlvmComment com = semi <+> (ftext com)
 
 
 -- | Print out a list of global mutable variable definitions
@@ -136,7 +139,7 @@ ppLlvmFuncDecSig (LlvmFunctionDecl name link cc retTy argTy params)
                         VarArgs -> (text ", ...")
                         FixedArgs -> empty)
   in linkDoc <> (text $ show cc) <+> (text $ show retTy)
-      <+> atsym <> (text name) <> lparen <+> ppParams <+> rparen
+      <+> atsym <> (ftext name) <> lparen <+> ppParams <+> rparen
 
 
 -- | Print out a list of LLVM blocks.
@@ -159,7 +162,7 @@ ppLlvmStatement stmt
         Branch      target        -> ppBranch target
         BranchIf    cond ifT ifF  -> ppBranchIf cond ifT ifF
         Comment     comments      -> ppLlvmComments comments
-        MkLabel     label         -> (text $ label) <> colon
+        MkLabel     label         -> (llvmSDoc $ pprUnique label) <> colon
         Store       value ptr     -> ppStore value ptr
         Switch      scrut def tgs -> ppSwitch scrut def tgs
         Return      result        -> ppReturn result
@@ -272,10 +275,9 @@ ppGetElementPtr ptr idx =
   in (text "getelementptr") <+> (text $ show ptr) <> indexes
 
 
-ppReturn :: LlvmVar -> Doc
-ppReturn var
-  | getVarType var == LMVoid  = (text "ret") <+> (text $ show (getVarType var))
-  | otherwise                 = (text "ret") <+> (text $ show var)
+ppReturn :: Maybe LlvmVar -> Doc
+ppReturn (Just var) = (text "ret") <+> (text $ show var)
+ppReturn Nothing    = (text "ret") <+> (text $ show LMVoid)
 
 
 ppBranch :: LlvmVar -> Doc
@@ -315,4 +317,9 @@ ppCommaJoin strs = hcat $ intersperse comma (map (text . show) strs)
 
 ppSpaceJoin :: (Show a) => [a] -> Doc
 ppSpaceJoin strs = hcat $ intersperse space (map (text . show) strs)
+
+-- | Convert SDoc to Doc
+llvmSDoc :: Outp.SDoc -> Doc
+llvmSDoc d
+	= Outp.withPprStyleDoc (Outp.mkCodeStyle Outp.CStyle) d
 

@@ -16,6 +16,7 @@ import CLabel
 import Cmm
 
 import DynFlags
+import FastString
 import qualified Outputable
 
 import Data.Maybe
@@ -27,7 +28,7 @@ import Data.Maybe
 
 -- | The string appended to a variable name to create its structure type alias
 structStr :: LMString
-structStr = "_struct"
+structStr = fsLit "_struct"
 
 -- ----------------------------------------------------------------------------
 -- * Top level
@@ -47,7 +48,7 @@ genLlvmData _ ( _ , (CmmDataLabel lbl):xs) =
         getStatTypes (Right x) = getStatType x
 
         strucTy = LMStruct types
-        alias   = LMAlias (label ++ structStr) strucTy
+        alias   = LMAlias (label `appendFS` structStr) strucTy
     in (lbl, alias, static)
 
 genLlvmData _ _ = panic "genLlvmData: CmmData section doesn't start with label!"

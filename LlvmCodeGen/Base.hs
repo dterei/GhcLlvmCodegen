@@ -15,8 +15,8 @@ module LlvmCodeGen.Base (
         cmmToLlvmType, widthToLlvmFloat, widthToLlvmInt, llvmFunTy,
         llvmFunSig, llvmStdFunAttrs, llvmPtrBits, llvmGhcCC,
 
-        strBlockId_llvm, strCLabel_llvm,
-        genCmmLabelRef, genStringLabelRef, llvmSDoc
+        strCLabel_llvm,
+        genCmmLabelRef, genStringLabelRef
 
     ) where
 
@@ -25,16 +25,13 @@ module LlvmCodeGen.Base (
 import Llvm
 import LlvmCodeGen.Regs
 
-import BlockId
 import CLabel
 import Cmm
 
-import Outputable ( ppr )
-import qualified Outputable
-import Pretty
+import FastString
+import qualified Outputable as Outp
 import Unique
-
-import qualified Data.Map as Map
+import UniqFM
 
 -- ----------------------------------------------------------------------------
 -- * Some Data Types
@@ -51,7 +48,7 @@ type LlvmUnresData = (CLabel, LlvmType, [UnresStatic])
 type LlvmData = ([LMGlobal], [LlvmType])
 
 -- | An unresolved Label.
--- 
+--
 -- Labels are unresolved when we haven't yet determined if they are defined in
 -- the module we are currently compiling, or an external one.
 type UnresLabel = CmmLit
@@ -72,7 +69,7 @@ widthToLlvmFloat W32  = LMFloat
 widthToLlvmFloat W64  = LMDouble
 widthToLlvmFloat W80  = LMFloat80
 widthToLlvmFloat W128 = LMFloat128
-widthToLlvmFloat w    = panic $ "widthToLlvmFloat: Invalid float size, " ++ show w
+widthToLlvmFloat w    = panic $ "widthToLlvmFloat: Bad float size: " ++ show w
 
 -- | Translate a Cmm Bit Width to a LlvmType.
 widthToLlvmInt :: Width -> LlvmType
@@ -86,7 +83,7 @@ llvmGhcCC = CC_Ncc 10
 llvmFunTy :: LlvmType
 llvmFunTy
   = LMFunction $
-        LlvmFunctionDecl "a" ExternallyVisible llvmGhcCC LMVoid FixedArgs
+        LlvmFunctionDecl (fsLit "a") ExternallyVisible llvmGhcCC LMVoid FixedArgs
             (Left $ map getVarType llvmFunArgs)
 
 -- | Llvm Function signature
@@ -113,42 +110,38 @@ llvmPtrBits = widthInBits $ typeWidth gcWord
 -- * Environment Handling
 --
 
-type LlvmEnvMap = Map.Map LMString LlvmType
+type LlvmEnvMap = UniqFM LlvmType
 -- two maps, one for functions and one for local vars.
 type LlvmEnv = (LlvmEnvMap, LlvmEnvMap)
 
 -- | Get initial Llvm environment.
 initLlvmEnv :: LlvmEnv
-initLlvmEnv = (Map.empty, Map.empty)
+initLlvmEnv = (emptyUFM, emptyUFM)
 
 -- | Clear variables from the environment.
 clearVars :: LlvmEnv -> LlvmEnv
-clearVars (e1, _) = (e1, Map.empty)
+clearVars (e1, _) = (e1, emptyUFM)
 
 -- | Insert functions into the environment.
-varInsert, funInsert :: LMString -> LlvmType -> LlvmEnv -> LlvmEnv
-varInsert s t (e1, e2) = (e1, Map.insert s t e2)
-funInsert s t (e1, e2) = (Map.insert s t e1, e2)
+varInsert, funInsert :: Uniquable key => key -> LlvmType -> LlvmEnv -> LlvmEnv
+varInsert s t (e1, e2) = (e1, addToUFM e2 s t)
+funInsert s t (e1, e2) = (addToUFM e1 s t, e2)
 
 -- | Lookup functions in the environment.
-varLookup, funLookup :: LMString -> LlvmEnv -> Maybe LlvmType
-varLookup s (_, e2) = Map.lookup s e2
-funLookup s (e1, _) = Map.lookup s e1
+varLookup, funLookup :: Uniquable key => key -> LlvmEnv -> Maybe LlvmType
+varLookup s (_, e2) = lookupUFM e2 s
+funLookup s (e1, _) = lookupUFM e1 s
 
 
 -- ----------------------------------------------------------------------------
 -- * Label handling
 --
 
--- | Pretty Print a 'BlockId'.
-strBlockId_llvm :: BlockId -> LMString
-strBlockId_llvm b = (show . llvmSDoc . ppr . getUnique) b
-
 -- | Pretty print a 'CLabel'.
 strCLabel_llvm :: CLabel -> LMString
-strCLabel_llvm l = show $ llvmSDoc (pprCLabel l)
+strCLabel_llvm l = (fsLit . show . llvmSDoc . pprCLabel) l
 
--- | Create an external definition for a 'CLabel' that is defined in another module.
+-- | Create an external definition for a 'CLabel' defined in another module.
 genCmmLabelRef :: CLabel -> LMGlobal
 genCmmLabelRef cl =
     let mcl = strCLabel_llvm cl
@@ -164,12 +157,7 @@ genStringLabelRef cl =
 -- * Misc
 --
 
--- | Convert SDoc to Doc
-llvmSDoc :: Outputable.SDoc -> Doc
-llvmSDoc d
-	= Outputable.withPprStyleDoc (Outputable.mkCodeStyle Outputable.CStyle) d
-
 -- | Error function
 panic :: String -> a
-panic s = Outputable.panic $ "LlvmCodeGen.Base." ++ s
+panic s = Outp.panic $ "LlvmCodeGen.Base." ++ s
 

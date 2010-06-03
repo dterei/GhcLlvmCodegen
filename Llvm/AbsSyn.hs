@@ -6,8 +6,10 @@ module Llvm.AbsSyn where
 
 import Llvm.Types
 
+import Unique
+
 -- | Block labels
-type LlvmBlockId = LMString
+type LlvmBlockId = Unique
 
 -- | A block of LLVM code.
 data LlvmBlock = LlvmBlock {
@@ -86,7 +88,7 @@ data LlvmStatement
     Set a label on this position.
       * name: Identifier of this label, unique for this module
   -}
-  | MkLabel LMString
+  | MkLabel LlvmBlockId
 
   {- |
     Store variable value in pointer ptr. If value is of type t then ptr must
@@ -111,7 +113,7 @@ data LlvmStatement
     Return a result.
       * result: The variable or constant to return
   -}
-  | Return LlvmVar
+  | Return (Maybe LlvmVar)
 
   {- |
     An instruction for the optimizer that the code following is not reachable

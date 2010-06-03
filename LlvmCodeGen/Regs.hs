@@ -13,6 +13,7 @@ import Llvm
 import CmmExpr
 import Outputable ( panic )
 import CgUtils ( activeStgRegs )
+import FastString
 
 -- | Get the LlvmVar function variable storing the real register
 lmGlobalRegVar :: GlobalReg -> LlvmVar
@@ -48,7 +49,7 @@ lmGlobalReg suf reg
         _other         -> panic $ "LlvmCodeGen.Reg: GlobalReg (" ++ (show reg)
                                 ++ ") not supported!"
     where
-        wordGlobal   name = LMLocalVar name llvmWordPtr
-        floatGlobal  name = LMLocalVar name $ pLift LMFloat
-        doubleGlobal name = LMLocalVar name $ pLift LMDouble
+        wordGlobal   name = LMNLocalVar (fsLit name) llvmWordPtr
+        floatGlobal  name = LMNLocalVar (fsLit name) $ pLift LMFloat
+        doubleGlobal name = LMNLocalVar (fsLit name) $ pLift LMDouble
 

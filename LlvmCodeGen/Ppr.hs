@@ -17,6 +17,7 @@ import Cmm
 
 import DynFlags
 import Pretty
+import Unique
 
 -- ----------------------------------------------------------------------------
 -- * Top level
@@ -67,7 +68,7 @@ pprLlvmCmmTop dflags (CmmProc info lbl _ (ListGraph blocks))
         let link = if (externallyVisibleCLabel lbl)
                         then ExternallyVisible else Internal
             funDec = llvmFunSig lbl link
-            lmblocks = map (\(BasicBlock id stmts) -> LlvmBlock (strBlockId_llvm id) stmts) blocks
+            lmblocks = map (\(BasicBlock id stmts) -> LlvmBlock (getUnique id) stmts) blocks
             fun = LlvmFunction funDec [NoUnwind] lmblocks
         in ppLlvmFunction fun
     )
