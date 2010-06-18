@@ -3,7 +3,7 @@
 --
 
 module LlvmCodeGen.Regs (
-        activeStgRegs, lmGlobalRegArg, lmGlobalRegVar
+        lmGlobalRegArg, lmGlobalRegVar
     ) where
 
 #include "HsVersions.h"
@@ -12,7 +12,6 @@ import Llvm
 
 import CmmExpr
 import Outputable ( panic )
-import CgUtils ( activeStgRegs )
 import FastString
 
 -- | Get the LlvmVar function variable storing the real register
