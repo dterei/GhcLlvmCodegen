@@ -15,7 +15,6 @@ import LlvmCodeGen.Data
 import CLabel
 import Cmm
 
-import DynFlags
 import FastString
 import Pretty
 import Unique
@@ -60,15 +59,26 @@ pprLlvmHeader :: Doc
 pprLlvmHeader = moduleLayout
 
 
--- | Pretty print LLVM code
-pprLlvmCmmTop :: DynFlags -> LlvmEnv -> Int -> LlvmCmmTop -> (Doc, [LlvmVar])
-pprLlvmCmmTop dflags _ _ (CmmData _ lmdata)
-  = (vcat $ map (pprLlvmData dflags) lmdata, [])
+-- | Pretty print LLVM data code
+pprLlvmData :: LlvmData -> Doc
+pprLlvmData (globals, types) =
+    let tryConst (v, Just s )   = ppLlvmGlobal (v, Just s)
+        tryConst g@(_, Nothing) = ppLlvmGlobal g
 
-pprLlvmCmmTop dflags env count (CmmProc info lbl _ (ListGraph blks))
+        types'   = ppLlvmTypes types
+        globals' = vcat $ map tryConst globals
+    in types' $+$ globals'
+
+
+-- | Pretty print LLVM code
+pprLlvmCmmTop :: LlvmEnv -> Int -> LlvmCmmTop -> (Doc, [LlvmVar])
+pprLlvmCmmTop _ _ (CmmData _ lmdata)
+  = (vcat $ map pprLlvmData lmdata, [])
+
+pprLlvmCmmTop env count (CmmProc info lbl _ (ListGraph blks))
   = let static = CmmDataLabel lbl : info
         (idoc, ivar) = if not (null info)
-                          then pprCmmStatic dflags env count static
+                          then pprCmmStatic env count static
                           else (empty, [])
     in (idoc $+$ (
         let sec = mkLayoutSection (count + 1)
@@ -86,28 +96,20 @@ pprLlvmCmmTop dflags env count (CmmProc info lbl _ (ListGraph blks))
     ), ivar)
 
 
--- | Pretty print LLVM data code
-pprLlvmData :: DynFlags -> LlvmData -> Doc
-pprLlvmData _ (globals, types) =
-    let globals' = ppLlvmGlobals globals
-        types'   = ppLlvmTypes types
-    in types' $+$ globals'
-
-
 -- | Pretty print CmmStatic
-pprCmmStatic :: DynFlags -> LlvmEnv -> Int -> [CmmStatic] -> (Doc, [LlvmVar])
-pprCmmStatic dflags env count stat
-  = let unres = genLlvmData dflags (Data,stat)
-        (_, (ldata, ltypes)) = resolveLlvmData dflags env unres
+pprCmmStatic :: LlvmEnv -> Int -> [CmmStatic] -> (Doc, [LlvmVar])
+pprCmmStatic env count stat
+  = let unres = genLlvmData (Text, stat)
+        (_, (ldata, ltypes)) = resolveLlvmData env unres
 
-        setSection (gv@(LMGlobalVar s ty l _ _), d)
+        setSection (gv@(LMGlobalVar s ty l _ _ c), d)
             = let v = if l == Internal then [gv] else []
                   sec = mkLayoutSection count
-              in ((LMGlobalVar s ty l sec llvmInfAlign, d), v)
+              in ((LMGlobalVar s ty l sec llvmInfAlign c, d), v)
         setSection v = (v,[])
 
         (ldata', llvmUsed) = mapAndUnzip setSection ldata
-    in (pprLlvmData dflags (ldata', ltypes), concat llvmUsed)
+    in (pprLlvmData (ldata', ltypes), concat llvmUsed)
 
 
 -- | Create an appropriate section declaration for subsection <n> of text
