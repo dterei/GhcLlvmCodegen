@@ -104,16 +104,29 @@ ppLlvmFunctions funcs = vcat $ map ppLlvmFunction funcs
 
 -- | Print out a function definition.
 ppLlvmFunction :: LlvmFunction -> Doc
-ppLlvmFunction (LlvmFunction dec attrs sec body) =
+ppLlvmFunction (LlvmFunction dec args attrs sec body) =
     let attrDoc = ppSpaceJoin attrs
         secDoc = case sec of
-                      Just s' -> text "section " <+> (doubleQuotes $ ftext s')
+                      Just s' -> text "section" <+> (doubleQuotes $ ftext s')
                       Nothing -> empty
-    in text "define" <+> texts dec
+    in text "define" <+> ppLlvmFunctionHeader dec args
         <+> attrDoc <+> secDoc
         $+$ lbrace
         $+$ ppLlvmBlocks body
         $+$ rbrace
+
+-- | Print out a function defenition header.
+ppLlvmFunctionHeader :: LlvmFunctionDecl -> [LMString] -> Doc
+ppLlvmFunctionHeader (LlvmFunctionDecl n l c r varg p a) args
+  = let varg' = if varg == VarArgs then text ", ..." else empty
+        align = case a of
+                     Just a' -> space <> text "align" <+> texts a'
+                     Nothing -> empty
+        args' = map (\((ty,p),n) -> texts ty <+> ppSpaceJoin p <+> text "%"
+                                    <> ftext n)
+                    (zip p args)
+    in texts l <+> texts c <+> texts r <+> text "@" <> ftext n <> lparen <>
+        (hcat $ intersperse comma args') <> varg' <> rparen <> align
 
 
 -- | Print out a list of function declaration.
@@ -164,7 +177,7 @@ ppLlvmExpression expr
         Call       tp fp args attrs -> ppCall tp fp args attrs
         Cast       op from to       -> ppCast op from to
         Compare    op left right    -> ppCmpOp op left right
-        GetElemPtr ptr indexes      -> ppGetElementPtr ptr indexes
+        GetElemPtr inb ptr indexes  -> ppGetElementPtr inb ptr indexes
         Load       ptr              -> ppLoad ptr
         Malloc     tp amount        -> ppMalloc tp amount
         Phi        tp precessors    -> ppPhi tp precessors
@@ -194,7 +207,8 @@ ppCall ct fptr vals attrs = case fptr of
         ppCall' (LlvmFunctionDecl _ _ cc ret argTy params _) =
             let tc = if ct == TailCall then text "tail " else empty
                 ppValues = ppCommaJoin vals
-                ppArgTy = either ppCommaJoin (\x -> ppCommaJoin $ map getVarType x) params <>
+                ppParams = map (\(ty,p) -> texts ty <+> ppSpaceJoin p) params
+                ppArgTy  = (hcat $ intersperse comma ppParams) <>
                            (case argTy of
                                VarArgs   -> text ", ..."
                                FixedArgs -> empty)
@@ -216,9 +230,12 @@ ppCmpOp op left right =
   let cmpOp
         | isInt (getVarType left) && isInt (getVarType right) = text "icmp"
         | isFloat (getVarType left) && isFloat (getVarType right) = text "fcmp"
+        | otherwise = text "icmp" -- Just continue as its much easier to debug
+        {-
         | otherwise = error ("can't compare different types, left = "
                 ++ (show $ getVarType left) ++ ", right = "
                 ++ (show $ getVarType right))
+        -}
   in cmpOp <+> texts op <+> texts (getVarType left)
         <+> (text $ getName left) <> comma <+> (text $ getName right)
 
@@ -251,10 +268,11 @@ ppAlloca tp amount =
   in text "alloca" <+> texts tp <> comma <+> texts amount'
 
 
-ppGetElementPtr :: LlvmVar -> [Int] -> Doc
-ppGetElementPtr ptr idx =
+ppGetElementPtr :: Bool -> LlvmVar -> [Int] -> Doc
+ppGetElementPtr inb ptr idx =
   let indexes = hcat $ map ((comma <+> texts i32 <+>) . texts) idx
-  in text "getelementptr" <+> texts ptr <> indexes
+      inbound = if inb then text "inbounds" else empty
+  in text "getelementptr" <+> inbound <+> texts ptr <> indexes
 
 
 ppReturn :: Maybe LlvmVar -> Doc

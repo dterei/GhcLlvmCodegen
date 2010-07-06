@@ -57,10 +57,14 @@ instance Show LlvmType where
   show (LMVoid        ) = "void"
   show (LMStruct tys  ) = "{" ++ (commaCat tys) ++ "}"
 
-  show (LMFunction (LlvmFunctionDecl _ _ _ r VarArgs p _))
-        = show r ++ " (" ++ (either commaCat commaCat p) ++ ", ...)"
-  show (LMFunction (LlvmFunctionDecl _ _ _ r FixedArgs p _))
-        = show r ++ " (" ++ (either commaCat commaCat p) ++ ")"
+  show (LMFunction (LlvmFunctionDecl _ _ _ r varg p _))
+    = let args = ((drop 1).concat) $ -- use drop since it can handle empty lists
+                  map (\(t,a) -> "," ++ show t ++ " " ++ spaceCat a) p
+          varg' = case varg of
+                        VarArgs | not (null args) -> ", ..."
+                                | otherwise       -> "..."
+                        _otherwise                -> ""
+      in show r ++ " (" ++ args ++ varg' ++ ")"
 
   show (LMAlias s _   ) = "%" ++ unpackFS s
 
@@ -95,6 +99,10 @@ data LlvmLit
   = LMIntLit Integer LlvmType
   -- | Floating point literal
   | LMFloatLit Double LlvmType
+  -- | Literal NULL, only applicable to pointer types
+  | LMNullLit LlvmType
+  -- | Undefined value, random bit pattern. Useful for optimisations.
+  | LMUndefLit LlvmType
   deriving (Eq)
 
 instance Show LlvmLit where
@@ -151,14 +159,16 @@ instance Show LlvmStatic where
 
   show (LMAdd s1 s2)
       = let ty1 = getStatType s1
+            op  = if isFloat ty1 then " fadd (" else " add ("
         in if ty1 == getStatType s2
-                then show ty1 ++ " add (" ++ show s1 ++ "," ++ show s2 ++ ")"
+                then show ty1 ++ op ++ show s1 ++ "," ++ show s2 ++ ")"
                 else error $ "LMAdd with different types! s1: "
                         ++ show s1 ++ ", s2: " ++ show s2
   show (LMSub s1 s2)
       = let ty1 = getStatType s1
+            op  = if isFloat ty1 then " fsub (" else " sub ("
         in if ty1 == getStatType s2
-                then show ty1 ++ " sub (" ++ show s1 ++ "," ++ show s2 ++ ")"
+                then show ty1 ++ op ++ show s1 ++ "," ++ show s2 ++ ")"
                 else error $ "LMSub with different types! s1: "
                         ++ show s1 ++ ", s2: " ++ show s2
 
@@ -167,6 +177,11 @@ instance Show LlvmStatic where
 commaCat :: Show a => [a] -> String
 commaCat [] = ""
 commaCat x  = show (head x) ++ (concat $ map (\y -> "," ++ show y) (tail x))
+
+-- | Concatenate an array together, separated by commas
+spaceCat :: Show a => [a] -> String
+spaceCat [] = ""
+spaceCat x  = show (head x) ++ (concat $ map (\y -> " " ++ show y) (tail x))
 
 -- -----------------------------------------------------------------------------
 -- ** Operations on LLVM Basic Types and Variables
@@ -191,7 +206,11 @@ getPlainName (LMLitVar    x          ) = getLit x
 -- | Print a literal value. No type.
 getLit :: LlvmLit -> String
 getLit (LMIntLit   i _) = show ((fromInteger i)::Int)
-getLit (LMFloatLit r _) = dToStr r
+getLit (LMFloatLit r LMFloat ) = fToStr $ realToFrac r
+getLit (LMFloatLit r LMDouble) = dToStr r
+getLit f@(LMFloatLit _ _) = error $ "Can't print this float literal!" ++ show f
+getLit (LMNullLit _) = "null"
+getLit (LMUndefLit _) = "undef"
 
 -- | Return the 'LlvmType' of the 'LlvmVar'
 getVarType :: LlvmVar -> LlvmType
@@ -204,6 +223,8 @@ getVarType (LMLitVar    l          ) = getLitType l
 getLitType :: LlvmLit -> LlvmType
 getLitType (LMIntLit   _ t) = t
 getLitType (LMFloatLit _ t) = t
+getLitType (LMNullLit    t) = t
+getLitType (LMUndefLit   t) = t
 
 -- | Return the 'LlvmType' of the 'LlvmStatic'
 getStatType :: LlvmStatic -> LlvmType
@@ -324,19 +345,18 @@ llvmWordPtr = pLift llvmWord
 
 -- | An LLVM Function
 data LlvmFunctionDecl = LlvmFunctionDecl {
-        -- | Unique identifier of the function.
+        -- | Unique identifier of the function
         decName       :: LMString,
-        -- | LinkageType of the function.
+        -- | LinkageType of the function
         funcLinkage   :: LlvmLinkageType,
-        -- | The calling convention of the function.
+        -- | The calling convention of the function
         funcCc        :: LlvmCallConvention,
         -- | Type of the returned value
         decReturnType :: LlvmType,
         -- | Indicates if this function uses varargs
         decVarargs    :: LlvmParameterListType,
-        -- | Signature of the parameters, can be just types or full vars
-        -- if parameter names are required.
-        decParams     :: Either [LlvmType] [LlvmVar],
+        -- | Parameter types and attributes
+        decParams     :: [LlvmParameter],
         -- | Function align value, must be power of 2
         funcAlign     :: LMAlign
   }
@@ -344,15 +364,66 @@ data LlvmFunctionDecl = LlvmFunctionDecl {
 
 instance Show LlvmFunctionDecl where
   show (LlvmFunctionDecl n l c r varg p a)
-    = let varg' = if varg == VarArgs then ", ..." else ""
+    = let args = ((drop 1).concat) $ -- use drop since it can handle empty lists
+                  map (\(t,a) -> "," ++ show t ++ " " ++ spaceCat a) p
+          varg' = case varg of
+                        VarArgs | not (null args) -> ", ..."
+                                | otherwise       -> "..."
+                        _otherwise                -> ""
           align = case a of
                        Just a' -> " align " ++ show a'
                        Nothing -> ""
-    in show l ++ " " ++ show c ++ " " ++ show r ++ " @" ++ unpackFS n ++
-        "(" ++ (either commaCat commaCat p) ++ varg' ++ ")" ++ align
+      in show l ++ " " ++ show c ++ " " ++ show r ++ " @" ++ unpackFS n ++
+             "(" ++ args ++ varg' ++ ")" ++ align
 
 type LlvmFunctionDecls = [LlvmFunctionDecl]
 
+type LlvmParameter = (LlvmType, [LlvmParamAttr])
+
+-- | LLVM Parameter Attributes.
+--
+-- Parameter attributes are used to communicate additional information about
+-- the result or parameters of a function
+data LlvmParamAttr
+  -- | This indicates to the code generator that the parameter or return value
+  -- should be zero-extended to a 32-bit value by the caller (for a parameter)
+  -- or the callee (for a return value).
+  = ZeroExt
+  -- | This indicates to the code generator that the parameter or return value
+  -- should be sign-extended to a 32-bit value by the caller (for a parameter)
+  -- or the callee (for a return value).
+  | SignExt
+  -- | This indicates that this parameter or return value should be treated in
+  -- a special target-dependent fashion during while emitting code for a
+  -- function call or return (usually, by putting it in a register as opposed
+  -- to memory).
+  | InReg
+  -- | This indicates that the pointer parameter should really be passed by
+  -- value to the function.
+  | ByVal
+  -- | This indicates that the pointer parameter specifies the address of a
+  -- structure that is the return value of the function in the source program.
+  | SRet
+  -- | This indicates that the pointer does not alias any global or any other
+  -- parameter.
+  | NoAlias
+  -- | This indicates that the callee does not make any copies of the pointer
+  -- that outlive the callee itself
+  | NoCapture
+  -- | This indicates that the pointer parameter can be excised using the
+  -- trampoline intrinsics.
+  | Nest
+  deriving (Eq)
+
+instance Show LlvmParamAttr where
+  show ZeroExt   = "zeroext"
+  show SignExt   = "signext"
+  show InReg     = "inreg"
+  show ByVal     = "byval"
+  show SRet      = "sret"
+  show NoAlias   = "noalias"
+  show NoCapture = "nocapture"
+  show Nest      = "nest"
 
 -- | Llvm Function Attributes.
 --
@@ -575,10 +646,14 @@ data LlvmMachOp
   | LM_MO_Mul  -- ^ multiply ..
   | LM_MO_UDiv -- ^ unsigned integer or vector division.
   | LM_MO_SDiv -- ^ signed integer ..
-  | LM_MO_FDiv -- ^ floating point ..
   | LM_MO_URem -- ^ unsigned integer or vector remainder (mod)
   | LM_MO_SRem -- ^ signed ...
-  | LM_MO_FRem -- ^ floating point ...
+
+  | LM_MO_FAdd -- ^ add two floating point or vector values.
+  | LM_MO_FSub -- ^ subtract two ...
+  | LM_MO_FMul -- ^ multiply ...
+  | LM_MO_FDiv -- ^ divide ...
+  | LM_MO_FRem -- ^ remainder ...
 
   -- | Left shift
   | LM_MO_Shl
@@ -601,9 +676,12 @@ instance Show LlvmMachOp where
   show LM_MO_Mul  = "mul"
   show LM_MO_UDiv = "udiv"
   show LM_MO_SDiv = "sdiv"
-  show LM_MO_FDiv = "fdiv"
   show LM_MO_URem = "urem"
   show LM_MO_SRem = "srem"
+  show LM_MO_FAdd = "fadd"
+  show LM_MO_FSub = "fsub"
+  show LM_MO_FMul = "fmul"
+  show LM_MO_FDiv = "fdiv"
   show LM_MO_FRem = "frem"
   show LM_MO_Shl  = "shl"
   show LM_MO_LShr = "lshr"
@@ -704,6 +782,14 @@ dToStr d
 
         str  = map toUpper $ concat . fixEndian . (map hex) $ bs
     in  "0x" ++ str
+
+-- | Convert a Haskell Float to an LLVM hex encoded floating point form.
+-- LLVM uses the same encoding for both floats and doubles (16 digit hex
+-- string) but floats must have the last half all zeroes so it can fit into
+-- a float size type.
+{-# NOINLINE fToStr #-}
+fToStr :: Float -> String
+fToStr = (dToStr . realToFrac)
 
 -- | Reverse or leave byte data alone to fix endianness on this target.
 fixEndian :: [a] -> [a]

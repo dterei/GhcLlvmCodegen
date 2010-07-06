@@ -1,4 +1,4 @@
--- ----------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 -- | Deal with Cmm registers
 --
 
@@ -16,11 +16,11 @@ import FastString
 
 -- | Get the LlvmVar function variable storing the real register
 lmGlobalRegVar :: GlobalReg -> LlvmVar
-lmGlobalRegVar = lmGlobalReg "_Var"
+lmGlobalRegVar = (pVarLift . lmGlobalReg "_Var")
 
 -- | Get the LlvmVar function argument storing the real register
 lmGlobalRegArg :: GlobalReg -> LlvmVar
-lmGlobalRegArg = (pVarLower . lmGlobalReg "_Arg")
+lmGlobalRegArg = lmGlobalReg "_Arg"
 
 {- Need to make sure the names here can't conflict with the unique generated
    names. Uniques generated names containing only base62 chars. So using say
@@ -29,9 +29,9 @@ lmGlobalRegArg = (pVarLower . lmGlobalReg "_Arg")
 lmGlobalReg :: String -> GlobalReg -> LlvmVar
 lmGlobalReg suf reg
   = case reg of
-        BaseReg        -> wordGlobal $ "Base" ++ suf
-        Sp             -> wordGlobal $ "Sp" ++ suf
-        Hp             -> wordGlobal $ "Hp" ++ suf
+        BaseReg        -> ptrGlobal $ "Base" ++ suf
+        Sp             -> ptrGlobal $ "Sp" ++ suf
+        Hp             -> ptrGlobal $ "Hp" ++ suf
         VanillaReg 1 _ -> wordGlobal $ "R1" ++ suf
         VanillaReg 2 _ -> wordGlobal $ "R2" ++ suf
         VanillaReg 3 _ -> wordGlobal $ "R3" ++ suf
@@ -48,7 +48,8 @@ lmGlobalReg suf reg
         _other         -> panic $ "LlvmCodeGen.Reg: GlobalReg (" ++ (show reg)
                                 ++ ") not supported!"
     where
-        wordGlobal   name = LMNLocalVar (fsLit name) llvmWordPtr
-        floatGlobal  name = LMNLocalVar (fsLit name) $ pLift LMFloat
-        doubleGlobal name = LMNLocalVar (fsLit name) $ pLift LMDouble
+        wordGlobal   name = LMNLocalVar (fsLit name) llvmWord
+        ptrGlobal    name = LMNLocalVar (fsLit name) llvmWordPtr
+        floatGlobal  name = LMNLocalVar (fsLit name) LMFloat
+        doubleGlobal name = LMNLocalVar (fsLit name) LMDouble
 
