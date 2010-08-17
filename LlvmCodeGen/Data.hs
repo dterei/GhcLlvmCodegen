@@ -47,7 +47,7 @@ genLlvmData (sec, CmmDataLabel lbl:xs) =
         getStatTypes (Right x) = getStatType x
 
         strucTy = LMStruct types
-        alias   = LMAlias (label `appendFS` structStr) strucTy
+        alias   = LMAlias ((label `appendFS` structStr), strucTy)
     in (lbl, sec, alias, static)
 
 genLlvmData _ = panic "genLlvmData: CmmData section doesn't start with label!"
@@ -106,7 +106,7 @@ resDatas env (cmm : rest) (stats, globs)
 --
 -- We check the 'LlvmEnv' to see if the reference has been defined in this
 -- module. If it has we can retrieve its type and make a pointer, otherwise
--- we introduce a generic external defenition for the referenced label and
+-- we introduce a generic external definition for the referenced label and
 -- then make a pointer.
 resData :: LlvmEnv -> UnresStatic -> (LlvmEnv, LlvmStatic, [Maybe LMGlobal])
 

@@ -2,7 +2,7 @@
 -- | This is the top-level module in the LLVM code generator.
 --
 
-module LlvmCodeGen ( llvmCodeGen ) where
+module LlvmCodeGen ( llvmCodeGen, llvmFixupAsm ) where
 
 #include "HsVersions.h"
 
@@ -12,6 +12,8 @@ import LlvmCodeGen.Base
 import LlvmCodeGen.CodeGen
 import LlvmCodeGen.Data
 import LlvmCodeGen.Ppr
+
+import LlvmMangler
 
 import CLabel
 import Cmm
@@ -30,26 +32,12 @@ import Util
 import System.IO
 
 -- -----------------------------------------------------------------------------
--- | Top-level of the llvm codegen
+-- | Top-level of the LLVM Code generator
 --
 llvmCodeGen :: DynFlags -> Handle -> UniqSupply -> [RawCmm] -> IO ()
 llvmCodeGen dflags h us cmms
-  = do
-      bufh <- newBufHandle h
-
-      Prt.bufLeftRender bufh $ pprLlvmHeader
-
-      env' <- cmmDataLlvmGens dflags bufh env cdata []
-      cmmProcLlvmGens dflags bufh us env' cmm 1 []
-
-      bFlush bufh
-
-      return  ()
-  where
-        cmm = concat $ map (\(Cmm top) -> top) cmms
-
+  = let cmm = concat $ map (\(Cmm top) -> top) cmms
         (cdata,env) = foldr split ([],initLlvmEnv) cmm
-
         split (CmmData s d'   ) (d,e) = ((s,d'):d,e)
         split (CmmProc i l _ _) (d,e) =
             let lbl = strCLabel_llvm $ if not (null i)
@@ -57,10 +45,19 @@ llvmCodeGen dflags h us cmms
                    else l
                 env' = funInsert lbl llvmFunTy e
             in (d,env')
+    in do
+        bufh <- newBufHandle h
+        Prt.bufLeftRender bufh $ pprLlvmHeader
+
+        env' <- cmmDataLlvmGens dflags bufh env cdata []
+        cmmProcLlvmGens dflags bufh us env' cmm 1 []
+
+        bFlush bufh
+        return  ()
 
 
 -- -----------------------------------------------------------------------------
--- | Do llvm code generation on all these cmms data sections.
+-- | Do LLVM code generation on all these Cmms data sections.
 --
 cmmDataLlvmGens :: DynFlags -> BufHandle -> LlvmEnv -> [(Section,[CmmStatic])]
                 -> [LlvmUnresData] -> IO ( LlvmEnv )
@@ -80,7 +77,7 @@ cmmDataLlvmGens dflags h env (cmm:cmms) lmdata
 
 
 -- -----------------------------------------------------------------------------
--- | Do llvm code generation on all these cmms procs.
+-- | Do LLVM code generation on all these Cmms procs.
 --
 cmmProcLlvmGens :: DynFlags -> BufHandle -> UniqSupply -> LlvmEnv -> [RawCmmTop]
       -> Int          -- ^ count, used for generating unique subsections
@@ -96,8 +93,7 @@ cmmProcLlvmGens _ h _ _ [] _ ivars
         usedArray = LMStaticArray (map cast ivars) ty
         lmUsed = (LMGlobalVar (fsLit "llvm.used") ty Appending
                   (Just $ fsLit "llvm.metadata") Nothing False, Just usedArray)
-    in do
-        Prt.bufLeftRender h $ pprLlvmData ([lmUsed], [])
+    in Prt.bufLeftRender h $ pprLlvmData ([lmUsed], [])
 
 cmmProcLlvmGens dflags h us env (cmm : cmms) count ivars
   = do
@@ -109,7 +105,7 @@ cmmProcLlvmGens dflags h us env (cmm : cmms) count ivars
     cmmProcLlvmGens dflags h us' env' cmms (count + 2) (concat ivar ++ ivars)
 
 
--- | Complete llvm code generation phase for a single top-level chunk of Cmm.
+-- | Complete LLVM code generation phase for a single top-level chunk of Cmm.
 cmmLlvmGen :: DynFlags -> UniqSupply -> LlvmEnv -> RawCmmTop
             -> IO ( UniqSupply, LlvmEnv, [LlvmCmmTop] )
 cmmLlvmGen dflags us env cmm

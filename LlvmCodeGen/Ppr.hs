@@ -3,7 +3,7 @@
 --
 
 module LlvmCodeGen.Ppr (
-        pprLlvmHeader, pprLlvmCmmTop, pprLlvmData
+        pprLlvmHeader, pprLlvmCmmTop, pprLlvmData, infoSection, iTableSuf
     ) where
 
 #include "HsVersions.h"
@@ -16,9 +16,10 @@ import CLabel
 import Cmm
 
 import FastString
+import qualified Outputable
 import Pretty
 import Unique
-import Util
+
 
 -- ----------------------------------------------------------------------------
 -- * Top level
@@ -67,7 +68,11 @@ pprLlvmData (globals, types) =
     let tryConst (v, Just s )   = ppLlvmGlobal (v, Just s)
         tryConst g@(_, Nothing) = ppLlvmGlobal g
 
-        types'   = ppLlvmTypes types
+        ppLlvmTys (LMAlias    a) = ppLlvmAlias a
+        ppLlvmTys (LMFunction f) = ppLlvmFunctionDecl f
+        ppLlvmTys _other         = empty
+
+        types'   = vcat $ map ppLlvmTys types
         globals' = vcat $ map tryConst globals
     in types' $+$ globals'
 
@@ -80,7 +85,7 @@ pprLlvmCmmTop _ _ (CmmData _ lmdata)
 pprLlvmCmmTop env count (CmmProc info lbl _ (ListGraph blks))
   = let static = CmmDataLabel lbl : info
         (idoc, ivar) = if not (null info)
-                          then pprCmmStatic env count static
+                          then pprInfoTable env count lbl static
                           else (empty, [])
     in (idoc $+$ (
         let sec = mkLayoutSection (count + 1)
@@ -98,19 +103,29 @@ pprLlvmCmmTop env count (CmmProc info lbl _ (ListGraph blks))
 
 
 -- | Pretty print CmmStatic
-pprCmmStatic :: LlvmEnv -> Int -> [CmmStatic] -> (Doc, [LlvmVar])
-pprCmmStatic env count stat
+pprInfoTable :: LlvmEnv -> Int -> CLabel -> [CmmStatic] -> (Doc, [LlvmVar])
+pprInfoTable env count lbl stat
   = let unres = genLlvmData (Text, stat)
         (_, (ldata, ltypes)) = resolveLlvmData env unres
 
-        setSection (gv@(LMGlobalVar s ty l _ _ c), d)
-            = let v = if l == Internal then [gv] else []
-                  sec = mkLayoutSection count
-              in ((LMGlobalVar s ty l sec llvmInfAlign c, d), v)
+        setSection ((LMGlobalVar _ ty l _ _ c), d)
+            = let sec = mkLayoutSection count
+                  ilabel = strCLabel_llvm (entryLblToInfoLbl lbl)
+                              `appendFS` fsLit iTableSuf
+                  gv = LMGlobalVar ilabel ty l sec llvmInfAlign c
+                  v = if l == Internal then [gv] else []
+              in ((gv, d), v)
         setSection v = (v,[])
 
-        (ldata', llvmUsed) = mapAndUnzip setSection ldata
-    in (pprLlvmData (ldata', ltypes), concat llvmUsed)
+        (ldata', llvmUsed) = setSection (last ldata)
+    in if length ldata /= 1
+          then Outputable.panic "LlvmCodeGen.Ppr: invalid info table!"
+          else (pprLlvmData ([ldata'], ltypes), llvmUsed)
+
+-- | We generate labels for info tables by converting them to the same label
+-- as for the entry code but adding this string as a suffix.
+iTableSuf :: String
+iTableSuf = "_itable"
 
 
 -- | Create an appropriate section declaration for subsection <n> of text
@@ -120,5 +135,21 @@ pprCmmStatic env count stat
 -- so we are hoping it does.
 mkLayoutSection :: Int -> LMSection
 mkLayoutSection n
-  = Just (fsLit $ ".text;.text " ++ show n ++ " #")
+  -- On OSX we can't use the GNU Assembler, we must use the OSX assembler, which
+  -- doesn't support subsections. So we post process the assembly code, this
+  -- section specifier will be replaced with '.text' by the mangler.
+  = Just (fsLit $ infoSection ++ show n
+#if darwin_TARGET_OS
+      )
+#else
+      ++ "#")
+#endif
+
+-- | The section we are putting info tables and their entry code into
+infoSection :: String
+#if darwin_TARGET_OS
+infoSection = "__STRIP,__me"
+#else
+infoSection = ".text; .text "
+#endif
 

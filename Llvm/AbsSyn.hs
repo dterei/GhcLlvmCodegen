@@ -23,10 +23,13 @@ data LlvmBlock = LlvmBlock {
 
 type LlvmBlocks = [LlvmBlock]
 
--- | An LLVM Module. This is a top level contianer in LLVM.
+-- | An LLVM Module. This is a top level container in LLVM.
 data LlvmModule = LlvmModule  {
     -- | Comments to include at the start of the module.
     modComments  :: [LMString],
+
+    -- | LLVM Alias type definitions.
+    modAliases   :: [LlvmAlias],
 
     -- | Global variables to include in the module.
     modGlobals   :: [LMGlobal],
@@ -125,7 +128,7 @@ data LlvmStatement
 
   {- |
     Raise an expression to a statement (if don't want result or want to use
-    Llvm unamed values.
+    Llvm unnamed values.
   -}
   | Expr LlvmExpression
 
@@ -173,11 +176,9 @@ data LlvmExpression
     Navigate in an structure, selecting elements
       * inbound: Is the pointer inbounds? (computed pointer doesn't overflow)
       * ptr:     Location of the structure
-      * indexes: A list of indexes to select the correct value. For example
-                 the first element of the third element of the structure ptr
-                 is selected with [3,1] (zero indexed)
+      * indexes: A list of indexes to select the correct value.
   -}
-  | GetElemPtr Bool LlvmVar [Int]
+  | GetElemPtr Bool LlvmVar [LlvmVar]
 
   {- |
      Cast the variable from to the to type. This is an abstraction of three
@@ -203,11 +204,24 @@ data LlvmExpression
     Merge variables from different basic blocks which are predecessors of this
     basic block in a new variable of type tp.
       * tp:         type of the merged variable, must match the types of the
-                    precessors variables.
+                    predecessor variables.
       * precessors: A list of variables and the basic block that they originate
                     from.
   -}
   | Phi LlvmType [(LlvmVar,LlvmVar)]
+
+  {- |
+    Inline assembly expression. Syntax is very similar to the style used by GCC.
+      * assembly:   Actual inline assembly code.
+      * contraints: Operand constraints.
+      * return ty:  Return type of function.
+      * vars:       Any variables involved in the assembly code.
+      * sideeffect: Does the expression have side effects not visible from the
+                    constraints list.
+      * alignstack: Should the stack be conservatively aligned before this
+                    expression is executed.
+  -}
+  | Asm LMString LMString LlvmType [LlvmVar] Bool Bool
 
   deriving (Show, Eq)
 

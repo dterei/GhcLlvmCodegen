@@ -10,8 +10,8 @@ module Llvm.PpLlvm (
     ppLlvmComment,
     ppLlvmGlobals,
     ppLlvmGlobal,
-    ppLlvmType,
-    ppLlvmTypes,
+    ppLlvmAlias,
+    ppLlvmAliases,
     ppLlvmFunctionDecls,
     ppLlvmFunctionDecl,
     ppLlvmFunctions,
@@ -38,8 +38,10 @@ import Unique
 
 -- | Print out a whole LLVM module.
 ppLlvmModule :: LlvmModule -> Doc
-ppLlvmModule (LlvmModule comments globals decls funcs)
+ppLlvmModule (LlvmModule comments aliases globals decls funcs)
   = ppLlvmComments comments
+    $+$ empty
+    $+$ ppLlvmAliases aliases
     $+$ empty
     $+$ ppLlvmGlobals globals
     $+$ empty
@@ -83,19 +85,12 @@ ppLlvmGlobal oth = error $ "Non Global var ppr as global! " ++ show oth
 
 
 -- | Print out a list of LLVM type aliases.
-ppLlvmTypes :: [LlvmType] -> Doc
-ppLlvmTypes tys = vcat $ map ppLlvmType tys
+ppLlvmAliases :: [LlvmAlias] -> Doc
+ppLlvmAliases tys = vcat $ map ppLlvmAlias tys
 
 -- | Print out an LLVM type alias.
-ppLlvmType :: LlvmType -> Doc
-
-ppLlvmType al@(LMAlias _ t)
-  = texts al <+> equals <+> text "type" <+> texts t
-
-ppLlvmType (LMFunction t)
-  = ppLlvmFunctionDecl t
-
-ppLlvmType _ = empty
+ppLlvmAlias :: LlvmAlias -> Doc
+ppLlvmAlias (name, ty) = text "%" <> ftext name <+> equals <+> text "type" <+> texts ty
 
 
 -- | Print out a list of function definitions.
@@ -181,6 +176,7 @@ ppLlvmExpression expr
         Load       ptr              -> ppLoad ptr
         Malloc     tp amount        -> ppMalloc tp amount
         Phi        tp precessors    -> ppPhi tp precessors
+        Asm        asm c ty v se sk -> ppAsm asm c ty v se sk
 
 
 --------------------------------------------------------------------------------
@@ -268,9 +264,9 @@ ppAlloca tp amount =
   in text "alloca" <+> texts tp <> comma <+> texts amount'
 
 
-ppGetElementPtr :: Bool -> LlvmVar -> [Int] -> Doc
+ppGetElementPtr :: Bool -> LlvmVar -> [LlvmVar] -> Doc
 ppGetElementPtr inb ptr idx =
-  let indexes = hcat $ map ((comma <+> texts i32 <+>) . texts) idx
+  let indexes = comma <+> ppCommaJoin idx
       inbound = if inb then text "inbounds" else empty
   in text "getelementptr" <+> inbound <+> texts ptr <> indexes
 
@@ -302,6 +298,18 @@ ppSwitch scrut dflt targets =
       ppTargets  xs        = brackets $ vcat (map ppTarget xs)
   in text "switch" <+> texts scrut <> comma <+> texts dflt
         <+> ppTargets targets
+
+
+ppAsm :: LMString -> LMString -> LlvmType -> [LlvmVar] -> Bool -> Bool -> Doc
+ppAsm asm constraints rty vars sideeffect alignstack =
+  let asm'  = doubleQuotes $ ftext asm
+      cons  = doubleQuotes $ ftext constraints
+      rty'  = texts rty 
+      vars' = lparen <+> ppCommaJoin vars <+> rparen
+      side  = if sideeffect then text "sideeffect" else empty
+      align = if alignstack then text "alignstack" else empty
+  in text "call" <+> rty' <+> text "asm" <+> side <+> align <+> asm' <> comma
+        <+> cons <> vars'
 
 
 --------------------------------------------------------------------------------
